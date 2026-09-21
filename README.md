@@ -17,7 +17,7 @@
 #### Nhiệm vụ chung cả nhóm :
 Khởi tạo Solution .NET 10 Clean Architecture (Domain, Application, Infrastructure, API) và Next.js App Router5more_horiz.
 Chạy file docker-compose.yml chung để dựng PostgreSQL , MinIO, Redis, Seq.
-Định nghĩa BaseEntity chung (Id, CreatedAt, UpdatedAt, IsDeleted, RowVersion).
+Định nghĩa BaseE`ntity chung (Id, CreatedAt, UpdatedAt, IsDeleted, RowVersion).
 
 #### Nhiệm vụ riêng theo Bảng :
 |Thành viên 1|Thành viên 2|Thành viên 3|Thành viên 4|

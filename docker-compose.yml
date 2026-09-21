@@ -1,0 +1,54 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: foodblog-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: foodblog
+      POSTGRES_USER: foodblog
+      POSTGRES_PASSWORD: foodblog123
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  minio:
+    image: quay.io/minio/minio:latest
+    container_name: foodblog-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin123
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - miniodata:/data
+
+  redis:
+    image: redis:7-alpine
+    container_name: foodblog-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+
+  seq:
+    image: datalust/seq:latest
+    container_name: foodblog-seq
+    restart: unless-stopped
+    environment:
+      ACCEPT_EULA: "Y"
+    ports:
+      - "1880:80"
+      - "5341:5341"
+    volumes:
+      - seqdata:/data
+
+volumes:
+  pgdata:
+  miniodata:
+  redisdata:
+  seqdata:
