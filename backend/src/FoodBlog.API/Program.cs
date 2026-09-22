@@ -1,6 +1,9 @@
 using FoodBlog.API.Endpoints;
 using FoodBlog.Application;
 using FoodBlog.Infrastructure;
+using FoodBlog.Infrastructure.Persistence;
+using FoodBlog.Infrastructure.Persistence.Seed;
+using Microsoft.EntityFrameworkCore;
 using Scalar.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -36,6 +39,12 @@ if (app.Environment.IsDevelopment())
             .WithTheme(ScalarTheme.Purple)
             .WithDefaultHttpClient(ScalarTarget.CSharp, ScalarClient.HttpClient);
     });
+
+    // Dev-only: tự migrate + seed dữ liệu mẫu (không dùng ở Production)
+    using var scope = app.Services.CreateScope();
+    var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+    await db.Database.MigrateAsync();
+    await FoodBlogSeeder.SeedAsync(db);
 }
 
 app.UseHttpsRedirection();
