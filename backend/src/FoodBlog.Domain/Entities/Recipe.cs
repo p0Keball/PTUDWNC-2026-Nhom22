@@ -44,7 +44,11 @@ public class Recipe : BaseEntity
 
     // Navigation
     public Category? Category { get; private set; }
+    public ApplicationUser? Author { get; private set; }
+    public RecipeNutrition? Nutrition { get; private set; }
     public ICollection<RecipeStep> Steps { get; private set; } = [];
+    public ICollection<RecipeIngredient> Ingredients { get; private set; } = [];
+    public ICollection<RecipeImage> Images { get; private set; } = [];
 
     protected Recipe() { }
 
@@ -95,6 +99,12 @@ public class Recipe : BaseEntity
     public void Unpublish()
     {
         Status = RecipeStatus.Draft;
+        UpdatedAt = DateTime.UtcNow;
+    }
+
+    public void SetNutrition(RecipeNutrition? nutrition)
+    {
+        Nutrition = nutrition;
         UpdatedAt = DateTime.UtcNow;
     }
 }

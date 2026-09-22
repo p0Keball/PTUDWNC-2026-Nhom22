@@ -35,6 +35,23 @@ public class RecipeConfiguration : IEntityTypeConfiguration<Recipe>
         builder.HasIndex(r => r.Status);
         builder.HasIndex(r => r.CategoryId);
 
+        // Owned Entity: nhúng vào bảng Recipes với tiền tố Nutrition_* (SRS §7.2.1)
+        builder.OwnsOne(r => r.Nutrition, nb =>
+        {
+            nb.Property(n => n.Calories).HasColumnName("Nutrition_Calories").HasPrecision(8, 2);
+            nb.Property(n => n.Protein).HasColumnName("Nutrition_Protein").HasPrecision(8, 2);
+            nb.Property(n => n.Carbohydrates).HasColumnName("Nutrition_Carbohydrates").HasPrecision(8, 2);
+            nb.Property(n => n.Fat).HasColumnName("Nutrition_Fat").HasPrecision(8, 2);
+            nb.Property(n => n.Fiber).HasColumnName("Nutrition_Fiber").HasPrecision(8, 2);
+            nb.Property(n => n.Sodium).HasColumnName("Nutrition_Sodium").HasPrecision(8, 2);
+        });
+
+        // N Recipe -> 1 Author, Restrict (xóa user không cascade xóa recipe)
+        builder.HasOne(r => r.Author)
+            .WithMany(u => u.Recipes)
+            .HasForeignKey(r => r.AuthorId)
+            .OnDelete(DeleteBehavior.Restrict);
+
         // 1 Recipe -> N Step, Cascade Delete (SRS §6.4)
         builder.HasMany(r => r.Steps)
             .WithOne(s => s.Recipe!)

@@ -16,6 +16,10 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
     public DbSet<Category> Categories => Set<Category>();
     public DbSet<Recipe> Recipes => Set<Recipe>();
     public DbSet<RecipeStep> RecipeSteps => Set<RecipeStep>();
+    public DbSet<RecipeIngredient> RecipeIngredients => Set<RecipeIngredient>();
+    public DbSet<RecipeImage> RecipeImages => Set<RecipeImage>();
+    public DbSet<ApplicationUser> Users => Set<ApplicationUser>();
+    public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

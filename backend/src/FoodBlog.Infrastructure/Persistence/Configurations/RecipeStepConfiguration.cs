@@ -22,5 +22,10 @@ public class RecipeStepConfiguration : IEntityTypeConfiguration<RecipeStep>
 
         builder.Property(s => s.ImageUrl)
             .HasMaxLength(500);
+
+        // StepNumber duy nhất trong phạm vi 1 recipe (renumber khi xóa, FR-RCP-010)
+        builder.HasIndex(s => new { s.RecipeId, s.StepNumber }).IsUnique();
+
+        builder.HasQueryFilter(s => !s.IsDeleted);
     }
 }
