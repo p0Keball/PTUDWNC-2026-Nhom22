@@ -1,0 +1,25 @@
+@host = https://localhost:7029
+@categoryId = 00000000-0000-0000-0000-000000000000
+@authorId = 11111111-1111-1111-1111-111111111111
+
+### 1. Tạo mới Recipe
+POST {{host}}/api/v1/recipes
+Content-Type: application/json
+
+{
+  "title": "Phở Bò Hà Nội",
+  "description": "Món ăn quốc hồn quốc túy",
+  "instructions": "Ninh xương 8 tiếng...",
+  "prepTimeMinutes": 30,
+  "cookTimeMinutes": 480,
+  "servings": 4,
+  "difficulty": 2,
+  "categoryId": "{{categoryId}}",
+  "authorId": "{{authorId}}"
+}
+
+### 2. Lấy danh sách lọc cookTime từ 30 đến 500 phút
+GET {{host}}/api/v1/recipes?minCookTime=30&maxCookTime=500&difficulty=2&page=1&pageSize=5
+
+### 3. Lấy bài viết theo Nested Route
+GET {{host}}/api/v1/categories/{{categoryId}}/recipes

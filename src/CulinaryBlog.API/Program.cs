@@ -1,6 +1,7 @@
 using CulinaryBlog.Application;
 using CulinaryBlog.Infrastructure;
 using Scalar.AspNetCore;
+using CulinaryBlog.API.Endpoints;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -34,4 +35,5 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+app.MapRecipeEndpoints();
 app.Run();
