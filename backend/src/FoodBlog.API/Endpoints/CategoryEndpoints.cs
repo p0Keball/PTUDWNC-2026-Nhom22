@@ -19,8 +19,7 @@ public static class CategoryEndpoints
     public static IEndpointRouteBuilder MapCategoryEndpoints(this IEndpointRouteBuilder app)
     {
         var group = app.MapGroup("/api/v1/categories")
-            .WithTags("Categories")
-            .WithOpenApi();
+            .WithTags("Categories");
 
         // GET /api/v1/categories?page=1&pageSize=10&search=&sortBy=name
         group.MapGet("/", async (
