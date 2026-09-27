@@ -1,6 +1,5 @@
-# VERIFY — Bản đồ project + cách chạy chi tiết (cho mọi thành viên)
+# VERIFY — Bản đồ project + cách chạy chi tiết 
 
-> Branch hiện tại: `BrVHuy`. PDF báo cáo lab chỉ là mẫu — điền theo việc mình làm.
 > Yêu cầu máy: .NET SDK `10.0.300+`, Node `20+`, Docker Desktop, Git.
 
 ## 1. Bản đồ
