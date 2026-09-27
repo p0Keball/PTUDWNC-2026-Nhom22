@@ -8,7 +8,9 @@ using Microsoft.Extensions.Caching.Memory;
 namespace FoodBlog.API.Endpoints;
 
 public record CategoryDto(Guid Id, string Name, string Slug, string? Description, string? ImageUrl, int OrderIndex, int RecipeCount);
-public record RecipeSummaryDto(Guid Id, string Title, string Slug, string Description);
+public record RecipeSummaryDto(Guid Id, string Title, string Slug, string Description,
+    string? PrimaryImageUrl, int PrepTimeMinutes, int CookTimeMinutes, int Servings,
+    string Difficulty, DateTime? PublishedAt);
 public record CreateCategoryRequest(string Name, string? Description, string? ImageUrl);
 public record UpdateCategoryRequest(string Name, string? Description, string? ImageUrl);
 
@@ -51,7 +53,10 @@ public static class CategoryEndpoints
                 .OrderByDescending(r => r.CreatedAt)
                 .Skip((page - 1) * pageSize)
                 .Take(pageSize)
-                .Select(r => new RecipeSummaryDto(r.Id, r.Title, r.Slug, r.Description))
+                .Select(r => new RecipeSummaryDto(r.Id, r.Title, r.Slug, r.Description,
+                    r.Images.Where(i => i.IsPrimary).Select(i => i.OriginalUrl).FirstOrDefault(),
+                    r.PrepTimeMinutes, r.CookTimeMinutes, r.Servings,
+                    r.Difficulty.ToString(), r.PublishedAt))
                 .ToListAsync();
 
             return Results.Ok(new
@@ -83,7 +88,7 @@ public static class CategoryEndpoints
             await db.SaveChangesAsync();
             cache.Remove(CacheKey);
 
-            return Results.Created($"/api/v1/categories/{category.Slug}",
+            return Results.Created($"/api/v1/categories/{Uri.EscapeDataString(category.Slug)}",
                 new CategoryDto(category.Id, category.Name, category.Slug,
                     category.Description, category.ImageUrl, category.OrderIndex, 0));
         });

@@ -14,6 +14,11 @@ public static class SlugHelper
         var sb = new StringBuilder();
         foreach (var c in normalized)
         {
+            if (c is 'đ')
+            {
+                sb.Append('d');
+                continue;
+            }
             var category = CharUnicodeInfo.GetUnicodeCategory(c);
             if (category == UnicodeCategory.NonSpacingMark)
                 continue;
