@@ -1,3 +1,4 @@
+using FoodBlog.Application.Common.Exceptions;
 using FoodBlog.Application.Features.Recipes;
 using FoodBlog.Application.Features.Recipes.Commands;
 using FoodBlog.Application.Features.Recipes.Queries;
@@ -110,10 +111,12 @@ public static class RecipeEndpoints
                 EvictListCache();
                 return Results.Ok(result);
             }
+            catch (RecipeConcurrencyException ex)
+            {
+                return Results.Conflict(new { code = "RECIPE_CONCURRENCY_CONFLICT", title = ex.Message });
+            }
             catch (FluentValidation.ValidationException ex)
             {
-                if (ex.Errors.Any(f => f.PropertyName == "RowVersion" && f.ErrorMessage.Contains("thay đổi")))
-                    return Results.UnprocessableEntity(new { code = "RECIPE_CONCURRENCY_CONFLICT", title = "Dữ liệu đã bị thay đổi bởi người khác." });
                 return Results.UnprocessableEntity(new { title = "Validation failed", errors = ToErrors(ex) });
             }
             catch (KeyNotFoundException)

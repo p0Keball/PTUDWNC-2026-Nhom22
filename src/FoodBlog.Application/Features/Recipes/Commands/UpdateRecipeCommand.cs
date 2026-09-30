@@ -1,4 +1,5 @@
 using FluentValidation;
+using FoodBlog.Application.Common.Exceptions;
 using FoodBlog.Application.Common.Interfaces;
 using FoodBlog.Application.Features.Recipes;
 using FoodBlog.Domain.Enums;
@@ -65,8 +66,7 @@ public sealed class UpdateRecipeCommandHandler(IFoodBlogDbContext db)
         }
 
         if (recipe.RowVersion is null || !recipe.RowVersion.SequenceEqual(clientVersion))
-            throw new ValidationException(
-                [new FluentValidation.Results.ValidationFailure("RowVersion", "Dữ liệu đã bị thay đổi bởi người khác.")]);
+            throw new RecipeConcurrencyException();
 
         if (!await db.Categories.AnyAsync(c => c.Id == req.CategoryId, ct))
             throw new ValidationException(
@@ -81,7 +81,15 @@ public sealed class UpdateRecipeCommandHandler(IFoodBlogDbContext db)
         recipe.Servings = req.Servings;
         recipe.Difficulty = (Difficulty)req.Difficulty;
 
-        await db.SaveChangesAsync(ct);
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            throw new RecipeConcurrencyException();
+        }
+
         return RecipeMapper.ToDetail(recipe);
     }
 }
