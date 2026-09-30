@@ -2,6 +2,7 @@ using FluentValidation;
 using FoodBlog.Application.Common.Exceptions;
 using FoodBlog.Application.Common.Interfaces;
 using FoodBlog.Application.Features.Recipes;
+using FoodBlog.Domain.Entities;
 using FoodBlog.Domain.Enums;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -18,7 +19,8 @@ public record UpdateRecipeCommand(
     int CookTimeMinutes,
     int Servings,
     int Difficulty,
-    string RowVersion) : IRequest<RecipeDetailDto>;
+    string RowVersion,
+    NutritionDto? Nutrition = null) : IRequest<RecipeDetailDto>;
 
 public sealed class UpdateRecipeCommandValidator : AbstractValidator<UpdateRecipeCommand>
 {
@@ -86,6 +88,18 @@ public sealed class UpdateRecipeCommandHandler(IFoodBlogDbContext db, ICurrentUs
         recipe.CookTimeMinutes = req.CookTimeMinutes;
         recipe.Servings = req.Servings;
         recipe.Difficulty = (Difficulty)req.Difficulty;
+        recipe.UpdatedAt = DateTime.UtcNow;
+
+        if (req.Nutrition is not null)
+        {
+            recipe.Nutrition ??= new RecipeNutrition();
+            recipe.Nutrition.Calories = req.Nutrition.Calories;
+            recipe.Nutrition.Protein = req.Nutrition.Protein;
+            recipe.Nutrition.Carbohydrates = req.Nutrition.Carbohydrates;
+            recipe.Nutrition.Fat = req.Nutrition.Fat;
+            recipe.Nutrition.Fiber = req.Nutrition.Fiber;
+            recipe.Nutrition.Sodium = req.Nutrition.Sodium;
+        }
 
         try
         {

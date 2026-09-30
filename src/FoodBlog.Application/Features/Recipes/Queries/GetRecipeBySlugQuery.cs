@@ -20,6 +20,7 @@ public sealed class GetRecipeBySlugQueryHandler(IFoodBlogDbContext db) : IReques
     public async Task<RecipeDetailDto?> Handle(GetRecipeBySlugQuery req, CancellationToken ct)
     {
         var recipe = await db.Recipes
+            .AsNoTracking()
             .Include(r => r.Steps)
             .Include(r => r.Ingredients)
             .Include(r => r.Images)

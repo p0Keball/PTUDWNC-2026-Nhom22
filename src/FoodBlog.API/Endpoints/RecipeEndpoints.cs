@@ -15,7 +15,8 @@ using NpgsqlTypes;
 namespace FoodBlog.API.Endpoints;
 
 public record UpdateRecipeRequest(string Title, string Description, string Instructions, Guid CategoryId,
-    int PrepTimeMinutes, int CookTimeMinutes, int Servings, int Difficulty, string RowVersion);
+    int PrepTimeMinutes, int CookTimeMinutes, int Servings, int Difficulty, string RowVersion,
+    NutritionDto? Nutrition = null);
 
 public static class RecipeEndpoints
 {
@@ -107,7 +108,8 @@ public static class RecipeEndpoints
             {
                 var result = await sender.Send(new UpdateRecipeCommand(
                     id, req.Title, req.Description, req.Instructions, req.CategoryId,
-                    req.PrepTimeMinutes, req.CookTimeMinutes, req.Servings, req.Difficulty, req.RowVersion));
+                    req.PrepTimeMinutes, req.CookTimeMinutes, req.Servings, req.Difficulty, req.RowVersion,
+                    req.Nutrition));
                 EvictListCache();
                 return Results.Ok(result);
             }
