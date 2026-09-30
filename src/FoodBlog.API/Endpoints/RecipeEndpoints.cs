@@ -115,6 +115,14 @@ public static class RecipeEndpoints
             {
                 return Results.Conflict(new { code = "RECIPE_CONCURRENCY_CONFLICT", title = ex.Message });
             }
+            catch (RecipeUnauthorizedException)
+            {
+                return Results.Unauthorized();
+            }
+            catch (RecipeForbiddenException ex)
+            {
+                return Results.Json(new { code = "RECIPE_FORBIDDEN", title = ex.Message }, statusCode: 403);
+            }
             catch (FluentValidation.ValidationException ex)
             {
                 return Results.UnprocessableEntity(new { title = "Validation failed", errors = ToErrors(ex) });

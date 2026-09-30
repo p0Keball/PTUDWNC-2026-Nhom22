@@ -1,4 +1,5 @@
 using FoodBlog.API.Endpoints;
+using FoodBlog.API.Services;
 using FoodBlog.Application;
 using FoodBlog.Application.Common.Interfaces;
 using FoodBlog.Domain.Entities;
@@ -12,6 +13,8 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddOpenApi();
 builder.Services.AddMemoryCache();
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<FoodBlog.Application.Common.Interfaces.ICurrentUserService, CurrentUserService>();
 builder.Services.AddApplication();
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {

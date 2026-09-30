@@ -40,7 +40,7 @@ public sealed class UpdateRecipeCommandValidator : AbstractValidator<UpdateRecip
     }
 }
 
-public sealed class UpdateRecipeCommandHandler(IFoodBlogDbContext db)
+public sealed class UpdateRecipeCommandHandler(IFoodBlogDbContext db, ICurrentUserService currentUser)
     : IRequestHandler<UpdateRecipeCommand, RecipeDetailDto>
 {
     public async Task<RecipeDetailDto> Handle(UpdateRecipeCommand req, CancellationToken ct)
@@ -53,6 +53,12 @@ public sealed class UpdateRecipeCommandHandler(IFoodBlogDbContext db)
 
         if (recipe is null)
             throw new KeyNotFoundException($"Recipe {req.Id} not found.");
+
+        if (!currentUser.IsAuthenticated || currentUser.UserId is null)
+            throw new RecipeUnauthorizedException();
+
+        if (!currentUser.IsAdmin && recipe.AuthorId != currentUser.UserId)
+            throw new RecipeForbiddenException();
 
         byte[] clientVersion;
         try
