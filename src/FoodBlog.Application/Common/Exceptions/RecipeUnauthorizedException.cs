@@ -1,9 +1,9 @@
+using System;
+
 namespace FoodBlog.Application.Common.Exceptions;
 
-public sealed class RecipeUnauthorizedException : Exception
+[Obsolete("Dùng FoodBlog.Domain.Exceptions.RecipeUnauthorizedException.")]
+public sealed class RecipeUnauthorizedException
+    : FoodBlog.Domain.Exceptions.RecipeUnauthorizedException
 {
-    public RecipeUnauthorizedException()
-        : base("Bạn cần đăng nhập để thực hiện thao tác này.")
-    {
-    }
 }

@@ -1,9 +1,9 @@
+using System;
+
 namespace FoodBlog.Application.Common.Exceptions;
 
-public sealed class RecipeConcurrencyException : Exception
+[Obsolete("Dùng FoodBlog.Domain.Exceptions.RecipeConcurrencyException.")]
+public sealed class RecipeConcurrencyException
+    : FoodBlog.Domain.Exceptions.RecipeConcurrencyException
 {
-    public RecipeConcurrencyException()
-        : base("Dữ liệu đã bị thay đổi bởi người khác.")
-    {
-    }
 }

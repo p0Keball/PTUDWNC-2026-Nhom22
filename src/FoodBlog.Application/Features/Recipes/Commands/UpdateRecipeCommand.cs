@@ -1,9 +1,9 @@
 using FluentValidation;
-using FoodBlog.Application.Common.Exceptions;
 using FoodBlog.Application.Common.Interfaces;
 using FoodBlog.Application.Features.Recipes;
 using FoodBlog.Domain.Entities;
 using FoodBlog.Domain.Enums;
+using FoodBlog.Domain.Exceptions;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
@@ -54,7 +54,7 @@ public sealed class UpdateRecipeCommandHandler(IFoodBlogDbContext db, ICurrentUs
             .FirstOrDefaultAsync(r => r.Id == req.Id, ct);
 
         if (recipe is null)
-            throw new KeyNotFoundException($"Recipe {req.Id} not found.");
+            throw new RecipeNotFoundException(req.Id);
 
         if (!currentUser.IsAuthenticated || currentUser.UserId is null)
             throw new RecipeUnauthorizedException();

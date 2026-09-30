@@ -1,9 +1,9 @@
+using System;
+
 namespace FoodBlog.Application.Common.Exceptions;
 
-public sealed class RecipeForbiddenException : Exception
+[Obsolete("Dùng FoodBlog.Domain.Exceptions.RecipeForbiddenException.")]
+public sealed class RecipeForbiddenException
+    : FoodBlog.Domain.Exceptions.RecipeForbiddenException
 {
-    public RecipeForbiddenException()
-        : base("Bạn không có quyền sửa công thức này.")
-    {
-    }
 }

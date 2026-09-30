@@ -1,10 +1,10 @@
-using FoodBlog.Application.Common.Exceptions;
 using FoodBlog.Application.Features.Recipes;
 using FoodBlog.Application.Features.Recipes.Commands;
 using FoodBlog.Application.Features.Recipes.Queries;
 using FoodBlog.Domain.Common;
 using FoodBlog.Domain.Entities;
 using FoodBlog.Domain.Enums;
+using FoodBlog.Domain.Exceptions;
 using FoodBlog.Infrastructure.Persistence;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -129,7 +129,7 @@ public static class RecipeEndpoints
             {
                 return Results.UnprocessableEntity(new { title = "Validation failed", errors = ToErrors(ex) });
             }
-            catch (KeyNotFoundException)
+            catch (RecipeNotFoundException)
             {
                 return Results.NotFound(new { code = "RECIPE_NOT_FOUND", title = "Không tìm thấy công thức.", id });
             }
