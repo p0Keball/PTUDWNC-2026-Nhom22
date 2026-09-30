@@ -7,12 +7,17 @@
 ```
 docker-compose.yml          # 4 service: Postgres, MinIO, Redis, Seq
 FoodBlog.slnx               # Solution .NET 10 (định dạng .slnx mới, KHÔNG phải .sln)
-src/FoodBlog.Domain/        # Entities (Category, Recipe, Step, Ingredient, Image,
-                            #   ApplicationUser, RefreshToken) + BaseEntity + SlugHelper
-src/FoodBlog.Application/   # (trống — dành cho MediatR/Validation Tuần 2)
-src/FoodBlog.Infrastructure/# Configurations, FoodBlogDbContext, Migrations, Seed (Bogus)
-src/FoodBlog.API/           # Program.cs + Endpoints/ (Category, Recipe, RecipeChild) + appsettings.json
-frontend/                   # Next.js App Router template (chưa có trang blog)
+src/FoodBlog.Domain/        # Entities (factory Create + private setters) + BaseEntity + SlugHelper
+                            #   + Exceptions/ (DomainException, 404/409/422/403)
+src/FoodBlog.Application/   # MediatR (CreateRecipeCommand, GetRecipes/BySlugQuery),
+                            #   FluentValidation + ValidationBehavior, Interfaces (IRepository,
+                            #   ICategoryRepository, IUnitOfWork, IFoodBlogDbContext)
+src/FoodBlog.Infrastructure/# Configurations, FoodBlogDbContext, Migrations, Seed (Bogus),
+                            #   Repositories/ (Generic, Category), UnitOfWork, Services/ (MinIO)
+src/FoodBlog.API/           # Program.cs + Endpoints/ (Category, Recipe, RecipeChild)
+                            #   + Middleware/ (ExceptionHandling, problem+json) + appsettings.json
+frontend/                   # Next.js: home + /recipes/[slug] + RecipeCard/Skeleton + lib/api.ts
+                            #   (chưa có trang categories/admin)
 README.md                   # Phân công TV1–TV4
 KEHOACH.md / HOC.md         # Ghi chú cá nhân (đang gitignore, chỉ nằm trên máy)
 CHECKLIST.md                # Checklist endpoints + FAILURE fixes (TV2, đã check xong)
@@ -53,6 +58,10 @@ dotnet run --project src/FoodBlog.API --urls "http://localhost:5000"
 
 ## 4. Endpoints hiện có (base `http://localhost:5000`)
 
+> Lỗi trả về chuẩn RFC 7807 `application/problem+json`
+> (`status/title/detail/code/errors/traceId`) nhờ middleware toàn cục.
+> Success JSON giữ nguyên để khỏi vỡ `frontend/lib/api.ts`.
+
 ### Category (FR-CAT-001→005)
 | Method | Endpoint | Ghi chú |
 |---|---|---|
@@ -62,7 +71,7 @@ dotnet run --project src/FoodBlog.API --urls "http://localhost:5000"
 | PUT | `/api/v1/categories/{id}` | slug KHÔNG đổi (F-14) |
 | DELETE | `/api/v1/categories/{id}` | còn recipe → 409; rỗng → 204 |
 
-### Recipe (FR-RCP)
+### Recipe (FR-RCP) 
 | Method | Endpoint | Ghi chú |
 |---|---|---|
 | GET | `/api/v1/recipes?page=&pageSize=&categoryId=&difficulty=&maxCookTime=&sort=` | chỉ Published, cache 15p |
@@ -87,7 +96,25 @@ Ví dụ nhanh:
 ```bash
 curl -s "http://localhost:5000/api/v1/recipes?page=1&pageSize=2" | head -c 300
 curl -s "http://localhost:5000/api/v1/recipes/search?q=banh" | head -c 300
+# Lỗi chuẩn: curl -s "http://localhost:5000/api/v1/categories/khong-co"  # 404 problem+json, code CATEGORY_NOT_FOUND
 ```
+### 4c. Lab 3 lõi (TV2, BrVHuy) — kiểm tra thế nào
+- Exceptions: mở `src/FoodBlog.Domain/Exceptions/` (base + 4 loại).
+- Repo/UoW: `Application/Common/Interfaces/` + `Infrastructure/Persistence/Repositories/` + `UnitOfWork.cs`; DI scoped trong `Program.cs`.
+- Middleware: `src/FoodBlog.API/Middleware/ExceptionHandlingMiddleware.cs`, đăng ký đầu pipeline.
+- Test: mọi case 404/409/422 phải trả `Content-Type: application/problem+json` kèm field `code`
+  (`CATEGORY_NOT_FOUND`, `CATEGORY_NAME_EXISTS`, `VALIDATION_ERROR`...).
+
+## 4b. Đồng bộ main (sau 27/09) — MediatR + factory methods
+
+- Branch đã fast-forward lên `origin/main`: Application có MediatR 14 + FluentValidation 12
+  (`CreateRecipeCommand`, `GetRecipesQuery`, `GetRecipeBySlugQuery`, `ValidationBehavior`),
+  `IFoodBlogDbContext`, `MinioFileStorageService`, frontend có trang recipes + `lib/api.ts`.
+- Entities dùng factory `Create(...)` + private setters → endpoints con (steps/ingredients/images)
+  đã chuyển sang factory + methods `Update`/`SetStepNumber`/`SetPrimary` (thêm mới, không đổi behavior).
+- `GET /recipes` và `GET /recipes/{slug}` chạy qua MediatR handlers; search vẫn SQL trực tiếp.
+- Nợ bàn với nhóm: `RefreshToken` có dòng `public Guid Id` che `BaseEntity.Id` (warning CS0108) —
+  đề xuất xóa, dùng `Id` kế thừa. `IsRevoked` computed thì OK (không phải cột DB, đúng F-02).
 
 ## 5. Kiểm tra dữ liệu trong DB
 
@@ -100,10 +127,12 @@ docker exec foodblog-postgres psql -U foodblog -d foodblog -c \
 # Đúng = 20 / 100 / ~1099 / ~650
 ```
 
-## 6. Chạy frontend (template, chưa nối API)
+## 6. Chạy frontend
 
 ```bash
 cd frontend && npm run dev     # http://localhost:3000
+# Đã có: home + Recipe List/Cards/Skeletons + /recipes/[slug] (nối API qua lib/api.ts).
+# Chưa có: trang categories, /admin/*, /search, auth UI.
 ```
 
 ## 7. Tạo migration mới (khi đổi Entity/Config)

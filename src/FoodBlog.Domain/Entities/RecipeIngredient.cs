@@ -31,4 +31,12 @@ public class RecipeIngredient : BaseEntity
             OrderIndex = orderIndex
         };
     }
+
+    public void Update(string name, decimal? quantity, string? unit, string? notes)
+    {
+        Name = name;
+        Quantity = quantity;
+        Unit = unit;
+        Notes = notes;
+    }
 }

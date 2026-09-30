@@ -27,12 +27,9 @@ public static class RecipeChildEndpoints
                 return Results.UnprocessableEntity(new { title = "Validation failed", errors = new { title = new[] { "Tiêu đề bước không được rỗng." } } });
 
             var number = await db.RecipeSteps.Where(s => s.RecipeId == id).CountAsync() + 1;
-            var step = new RecipeStep
-            {
-                RecipeId = id, StepNumber = number,
-                Title = req.Title.Trim(), Description = req.Description ?? string.Empty,
-                TimerMinutes = req.TimerMinutes, ImageUrl = req.ImageUrl
-            };
+            var step = RecipeStep.Create(id, number,
+                req.Title.Trim(), req.Description ?? string.Empty,
+                req.TimerMinutes, req.ImageUrl);
             db.RecipeSteps.Add(step);
             await db.SaveChangesAsync();
             EvictListCache();
@@ -44,10 +41,7 @@ public static class RecipeChildEndpoints
         {
             var step = await db.RecipeSteps.FirstOrDefaultAsync(s => s.Id == stepId && s.RecipeId == id);
             if (step is null) return Results.NotFound(new { title = "Không tìm thấy bước thực hiện.", stepId });
-            step.Title = req.Title.Trim();
-            step.Description = req.Description ?? string.Empty;
-            step.TimerMinutes = req.TimerMinutes;
-            step.ImageUrl = req.ImageUrl;
+            step.Update(req.Title.Trim(), req.Description ?? string.Empty, req.TimerMinutes, req.ImageUrl);
             await db.SaveChangesAsync();
             EvictListCache();
             return Results.Ok(new RecipeStepDto(step.Id, step.StepNumber, step.Title, step.Description, step.TimerMinutes, step.ImageUrl));
@@ -61,7 +55,7 @@ public static class RecipeChildEndpoints
             await db.SaveChangesAsync();
             var remaining = await db.RecipeSteps.Where(s => s.RecipeId == id).OrderBy(s => s.StepNumber).ToListAsync();
             for (var i = 0; i < remaining.Count; i++)
-                remaining[i].StepNumber = i + 1;
+                remaining[i].SetStepNumber(i + 1);
             await db.SaveChangesAsync();
             EvictListCache();
             return Results.NoContent();
@@ -75,11 +69,8 @@ public static class RecipeChildEndpoints
                 return Results.UnprocessableEntity(new { title = "Validation failed", errors = new { name = new[] { "Tên nguyên liệu không được rỗng." } } });
 
             var order = await db.RecipeIngredients.Where(i => i.RecipeId == id).CountAsync();
-            var ingredient = new RecipeIngredient
-            {
-                RecipeId = id, Name = req.Name.Trim(), Quantity = req.Quantity,
-                Unit = req.Unit, Notes = req.Notes, OrderIndex = order
-            };
+            var ingredient = RecipeIngredient.Create(id,
+                req.Name.Trim(), req.Quantity, req.Unit, req.Notes, order);
             db.RecipeIngredients.Add(ingredient);
             await db.SaveChangesAsync();
             EvictListCache();
@@ -91,10 +82,7 @@ public static class RecipeChildEndpoints
         {
             var ingredient = await db.RecipeIngredients.FirstOrDefaultAsync(i => i.Id == ingId && i.RecipeId == id);
             if (ingredient is null) return Results.NotFound(new { title = "Không tìm thấy nguyên liệu.", ingId });
-            ingredient.Name = req.Name.Trim();
-            ingredient.Quantity = req.Quantity;
-            ingredient.Unit = req.Unit;
-            ingredient.Notes = req.Notes;
+            ingredient.Update(req.Name.Trim(), req.Quantity, req.Unit, req.Notes);
             await db.SaveChangesAsync();
             EvictListCache();
             return Results.Ok(new RecipeIngredientDto(ingredient.Id, ingredient.Name, ingredient.Quantity, ingredient.Unit, ingredient.Notes, ingredient.OrderIndex));
@@ -118,11 +106,8 @@ public static class RecipeChildEndpoints
                 return Results.UnprocessableEntity(new { title = "Validation failed", errors = new { originalUrl = new[] { "URL ảnh không được rỗng." } } });
 
             var order = await db.RecipeImages.Where(i => i.RecipeId == id).CountAsync();
-            var image = new RecipeImage
-            {
-                RecipeId = id, OriginalUrl = req.OriginalUrl.Trim(), AltText = req.AltText,
-                IsPrimary = order == 0, OrderIndex = order
-            };
+            var image = RecipeImage.Create(id,
+                req.OriginalUrl.Trim(), null, null, req.AltText, order == 0, order);
             db.RecipeImages.Add(image);
             await db.SaveChangesAsync();
             EvictListCache();
@@ -135,7 +120,7 @@ public static class RecipeChildEndpoints
             if (image is null) return Results.NotFound(new { title = "Không tìm thấy ảnh.", imgId });
             var siblings = await db.RecipeImages.Where(i => i.RecipeId == id).ToListAsync();
             foreach (var s in siblings)
-                s.IsPrimary = s.Id == imgId;
+                s.SetPrimary(s.Id == imgId);
             await db.SaveChangesAsync();
             EvictListCache();
             return Results.Ok(ToImage(image));
@@ -153,7 +138,7 @@ public static class RecipeChildEndpoints
                 var next = await db.RecipeImages.Where(i => i.RecipeId == id).OrderBy(i => i.OrderIndex).FirstOrDefaultAsync();
                 if (next is not null)
                 {
-                    next.IsPrimary = true;
+                    next.SetPrimary(true);
                     await db.SaveChangesAsync();
                 }
             }

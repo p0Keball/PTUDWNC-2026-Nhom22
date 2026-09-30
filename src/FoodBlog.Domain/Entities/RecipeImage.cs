@@ -33,4 +33,9 @@ public class RecipeImage : BaseEntity
             OrderIndex = orderIndex
         };
     }
+
+    public void SetPrimary(bool isPrimary)
+    {
+        IsPrimary = isPrimary;
+    }
 }

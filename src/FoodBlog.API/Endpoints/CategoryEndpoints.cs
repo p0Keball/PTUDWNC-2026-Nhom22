@@ -1,8 +1,8 @@
+using FoodBlog.Application.Common.Interfaces;
 using FoodBlog.Domain.Common;
 using FoodBlog.Domain.Entities;
 using FoodBlog.Domain.Enums;
-using FoodBlog.Infrastructure.Persistence;
-using Microsoft.EntityFrameworkCore;
+using FoodBlog.Domain.Exceptions;
 using Microsoft.Extensions.Caching.Memory;
 
 namespace FoodBlog.API.Endpoints;
@@ -22,42 +22,37 @@ public static class CategoryEndpoints
     {
         var group = app.MapGroup("/api/v1/categories");
 
-        group.MapGet("/", async (FoodBlogDbContext db, IMemoryCache cache) =>
+        group.MapGet("/", async (IUnitOfWork uow, IMemoryCache cache) =>
         {
             if (cache.TryGetValue(CacheKey, out List<CategoryDto>? cached) && cached is not null)
                 return Results.Ok(cached);
 
-            var items = await db.Categories
-                .OrderBy(c => c.Name)
+            var categories = await uow.Categories.ListOrderedWithRecipesAsync();
+            var items = categories
                 .Select(c => new CategoryDto(
                     c.Id, c.Name, c.Slug, c.Description, c.ImageUrl, c.OrderIndex,
                     c.Recipes.Count(r => r.Status == RecipeStatus.Published)))
-                .ToListAsync();
+                .ToList();
 
             cache.Set(CacheKey, items, TimeSpan.FromMinutes(60));
             return Results.Ok(items);
         });
 
-        group.MapGet("/{slug}", async (string slug, FoodBlogDbContext db, int page = 1, int pageSize = 12) =>
+        group.MapGet("/{slug}", async (string slug, IUnitOfWork uow, int page = 1, int pageSize = 12) =>
         {
             page = Math.Max(page, 1);
             pageSize = Math.Clamp(pageSize, 1, 50);
 
-            var category = await db.Categories.FirstOrDefaultAsync(c => c.Slug == slug);
-            if (category is null)
-                return Results.NotFound(new { title = "Category not found", slug });
+            var category = await uow.Categories.GetBySlugAsync(slug)
+                ?? throw new NotFoundException("CATEGORY_NOT_FOUND", "Category not found");
 
-            var query = db.Recipes.Where(r => r.CategoryId == category.Id && r.Status == RecipeStatus.Published);
-            var total = await query.CountAsync();
-            var items = await query
-                .OrderByDescending(r => r.CreatedAt)
-                .Skip((page - 1) * pageSize)
-                .Take(pageSize)
+            var (recipes, total) = await uow.Categories.GetPublishedRecipesAsync(category.Id, page, pageSize);
+            var items = recipes
                 .Select(r => new RecipeSummaryDto(r.Id, r.Title, r.Slug, r.Description,
                     r.Images.Where(i => i.IsPrimary).Select(i => i.OriginalUrl).FirstOrDefault(),
                     r.PrepTimeMinutes, r.CookTimeMinutes, r.Servings,
                     r.Difficulty.ToString(), r.PublishedAt))
-                .ToListAsync();
+                .ToList();
 
             return Results.Ok(new
             {
@@ -67,16 +62,14 @@ public static class CategoryEndpoints
             });
         });
 
-        group.MapPost("/", async (CreateCategoryRequest req, FoodBlogDbContext db, IMemoryCache cache) =>
+        group.MapPost("/", async (CreateCategoryRequest req, IUnitOfWork uow, IMemoryCache cache) =>
         {
-            var errors = ValidateName(req.Name);
-            if (errors.Count > 0)
-                return Results.UnprocessableEntity(new { title = "Validation failed", errors });
+            ThrowIfInvalidName(req.Name);
 
-            if (await db.Categories.AnyAsync(c => c.Name == req.Name.Trim()))
-                return Results.Conflict(new { code = "CATEGORY_NAME_EXISTS", title = "Tên danh mục đã tồn tại." });
+            if (await uow.Categories.ExistsByNameAsync(req.Name.Trim()))
+                throw new ConflictException("CATEGORY_NAME_EXISTS", "Tên danh mục đã tồn tại.");
 
-            var slug = await UniqueSlugAsync(db, SlugHelper.Generate(req.Name));
+            var slug = await UniqueSlugAsync(uow, SlugHelper.Generate(req.Name));
             var category = new Category
             {
                 Name = req.Name.Trim(),
@@ -84,8 +77,8 @@ public static class CategoryEndpoints
                 Description = req.Description,
                 ImageUrl = req.ImageUrl
             };
-            db.Categories.Add(category);
-            await db.SaveChangesAsync();
+            await uow.Categories.AddAsync(category);
+            await uow.SaveChangesAsync();
             cache.Remove(CacheKey);
 
             return Results.Created($"/api/v1/categories/{Uri.EscapeDataString(category.Slug)}",
@@ -93,62 +86,60 @@ public static class CategoryEndpoints
                     category.Description, category.ImageUrl, category.OrderIndex, 0));
         });
 
-        group.MapPut("/{id:guid}", async (Guid id, UpdateCategoryRequest req, FoodBlogDbContext db, IMemoryCache cache) =>
+        group.MapPut("/{id:guid}", async (Guid id, UpdateCategoryRequest req, IUnitOfWork uow, IMemoryCache cache) =>
         {
-            var category = await db.Categories.FirstOrDefaultAsync(c => c.Id == id);
-            if (category is null)
-                return Results.NotFound(new { title = "Category not found", id });
+            var category = await uow.Categories.GetByIdAsync(id)
+                ?? throw new NotFoundException("CATEGORY_NOT_FOUND", "Category not found");
 
-            var errors = ValidateName(req.Name);
-            if (errors.Count > 0)
-                return Results.UnprocessableEntity(new { title = "Validation failed", errors });
+            ThrowIfInvalidName(req.Name);
 
-            var nameTaken = await db.Categories.AnyAsync(c => c.Id != id && c.Name == req.Name.Trim());
-            if (nameTaken)
-                return Results.UnprocessableEntity(new { title = "Validation failed", errors = new { name = new[] { "Tên danh mục đã tồn tại." } } });
+            if (await uow.Categories.ExistsByNameAsync(req.Name.Trim(), id))
+                throw new Domain.Exceptions.ValidationException(
+                    "Validation failed",
+                    new Dictionary<string, string[]> { ["name"] = ["Tên danh mục đã tồn tại."] });
 
             category.Name = req.Name.Trim();
             category.Description = req.Description;
             category.ImageUrl = req.ImageUrl;
-            await db.SaveChangesAsync();
+            await uow.SaveChangesAsync();
             cache.Remove(CacheKey);
 
-            var count = await db.Recipes.CountAsync(r => r.CategoryId == id && r.Status == RecipeStatus.Published);
+            var count = await uow.Categories.CountPublishedRecipesAsync(id);
             return Results.Ok(new CategoryDto(category.Id, category.Name, category.Slug,
                 category.Description, category.ImageUrl, category.OrderIndex, count));
         });
 
-        group.MapDelete("/{id:guid}", async (Guid id, FoodBlogDbContext db, IMemoryCache cache) =>
+        group.MapDelete("/{id:guid}", async (Guid id, IUnitOfWork uow, IMemoryCache cache) =>
         {
-            var category = await db.Categories.FirstOrDefaultAsync(c => c.Id == id);
-            if (category is null)
-                return Results.NotFound(new { title = "Category not found", id });
+            var category = await uow.Categories.GetByIdAsync(id)
+                ?? throw new NotFoundException("CATEGORY_NOT_FOUND", "Category not found");
 
-            var recipeCount = await db.Recipes.CountAsync(r => r.CategoryId == id);
+            var recipeCount = await uow.Categories.CountAllRecipesAsync(id);
             if (recipeCount > 0)
-                return Results.Conflict(new { title = $"Danh mục còn chứa {recipeCount} công thức.", recipeCount });
+                throw new ConflictException("CATEGORY_DELETE_HAS_RECIPES",
+                    $"Danh mục còn chứa {recipeCount} công thức.");
 
-            db.Categories.Remove(category);
-            await db.SaveChangesAsync();
+            uow.Categories.Remove(category);
+            await uow.SaveChangesAsync();
             cache.Remove(CacheKey);
             return Results.NoContent();
         });
     }
 
-    private static Dictionary<string, string[]> ValidateName(string? name)
+    private static void ThrowIfInvalidName(string? name)
     {
-        var errors = new Dictionary<string, string[]>();
         if (string.IsNullOrWhiteSpace(name) || name.Trim().Length is < 2 or > 50)
-            errors["name"] = ["Tên danh mục phải từ 2 đến 50 ký tự."];
-        return errors;
+            throw new Domain.Exceptions.ValidationException(
+                "Validation failed",
+                new Dictionary<string, string[]> { ["name"] = ["Tên danh mục phải từ 2 đến 50 ký tự."] });
     }
 
-    private static async Task<string> UniqueSlugAsync(FoodBlogDbContext db, string baseSlug)
+    private static async Task<string> UniqueSlugAsync(IUnitOfWork uow, string baseSlug)
     {
         var slug = string.IsNullOrWhiteSpace(baseSlug) ? Guid.NewGuid().ToString("N")[..8] : baseSlug;
         var candidate = slug;
         var counter = 2;
-        while (await db.Categories.AnyAsync(c => c.Slug == candidate))
+        while (await uow.Categories.ExistsBySlugAsync(candidate))
             candidate = $"{slug}-{counter++}";
         return candidate;
     }
