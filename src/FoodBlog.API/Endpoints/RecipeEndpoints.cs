@@ -100,37 +100,26 @@ public static class RecipeEndpoints
             }
         });
 
-        group.MapPut("/{id:guid}", async (Guid id, UpdateRecipeRequest req, FoodBlogDbContext db) =>
+        group.MapPut("/{id:guid}", async (Guid id, UpdateRecipeRequest req, ISender sender) =>
         {
-            var recipe = await db.Recipes
-                .Include(r => r.Steps).Include(r => r.Ingredients).Include(r => r.Images)
-                .FirstOrDefaultAsync(r => r.Id == id);
-            if (recipe is null)
+            try
+            {
+                var result = await sender.Send(new UpdateRecipeCommand(
+                    id, req.Title, req.Description, req.Instructions, req.CategoryId,
+                    req.PrepTimeMinutes, req.CookTimeMinutes, req.Servings, req.Difficulty, req.RowVersion));
+                EvictListCache();
+                return Results.Ok(result);
+            }
+            catch (FluentValidation.ValidationException ex)
+            {
+                if (ex.Errors.Any(f => f.PropertyName == "RowVersion" && f.ErrorMessage.Contains("thay đổi")))
+                    return Results.UnprocessableEntity(new { code = "RECIPE_CONCURRENCY_CONFLICT", title = "Dữ liệu đã bị thay đổi bởi người khác." });
+                return Results.UnprocessableEntity(new { title = "Validation failed", errors = ToErrors(ex) });
+            }
+            catch (KeyNotFoundException)
+            {
                 return Results.NotFound(new { code = "RECIPE_NOT_FOUND", title = "Không tìm thấy công thức.", id });
-
-            byte[] clientVersion;
-            try { clientVersion = Convert.FromBase64String(req.RowVersion); }
-            catch { return Results.UnprocessableEntity(new { title = "RowVersion không hợp lệ." }); }
-            if (recipe.RowVersion is null || !recipe.RowVersion.SequenceEqual(clientVersion))
-                return Results.UnprocessableEntity(new { code = "RECIPE_CONCURRENCY_CONFLICT", title = "Dữ liệu đã bị thay đổi bởi người khác." });
-
-            var errors = ValidateRecipe(req.Title, req.CategoryId, req.PrepTimeMinutes, req.CookTimeMinutes, req.Servings, req.Difficulty);
-            if (errors.Count > 0)
-                return Results.UnprocessableEntity(new { title = "Validation failed", errors });
-            if (!await db.Categories.AnyAsync(c => c.Id == req.CategoryId))
-                return Results.UnprocessableEntity(new { title = "Validation failed", errors = new { categoryId = new[] { "Danh mục không tồn tại." } } });
-
-            recipe.Title = req.Title.Trim();
-            recipe.Description = req.Description;
-            recipe.Instructions = req.Instructions;
-            recipe.CategoryId = req.CategoryId;
-            recipe.PrepTimeMinutes = req.PrepTimeMinutes;
-            recipe.CookTimeMinutes = req.CookTimeMinutes;
-            recipe.Servings = req.Servings;
-            recipe.Difficulty = (Difficulty)req.Difficulty;
-            await db.SaveChangesAsync();
-            EvictListCache();
-            return Results.Ok(RecipeMapper.ToDetail(recipe));
+            }
         });
 
         group.MapPatch("/{id:guid}/publish", async (Guid id, FoodBlogDbContext db) =>
@@ -194,19 +183,4 @@ public static class RecipeEndpoints
 
     private static string ToCamelCase(string s) =>
         string.IsNullOrEmpty(s) ? s : char.ToLowerInvariant(s[0]) + s.Substring(1);
-
-    private static Dictionary<string, string[]> ValidateRecipe(string? title, Guid categoryId,
-        int prep, int cook, int servings, int difficulty)
-    {
-        var errors = new Dictionary<string, string[]>();
-        if (string.IsNullOrWhiteSpace(title) || title.Trim().Length is < 5 or > 200)
-            errors["title"] = ["Tiêu đề phải từ 5 đến 200 ký tự."];
-        if (categoryId == Guid.Empty)
-            errors["categoryId"] = ["Danh mục không hợp lệ."];
-        if (prep <= 0) errors["prepTimeMinutes"] = ["Thời gian chuẩn bị phải > 0."];
-        if (cook < 0) errors["cookTimeMinutes"] = ["Thời gian nấu phải >= 0."];
-        if (servings <= 0) errors["servings"] = ["Khẩu phần phải > 0."];
-        if (difficulty is < 1 or > 4) errors["difficulty"] = ["Độ khó phải từ 1 đến 4."];
-        return errors;
-    }
 }
