@@ -60,7 +60,10 @@ export default function EditRecipePage({
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [reloading, setReloading] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
+  const [conflict, setConflict] = useState(false);
+  const [reloaded, setReloaded] = useState(false);
   const [notFound, setNotFound] = useState(false);
 
   useEffect(() => {
@@ -100,6 +103,7 @@ export default function EditRecipePage({
 
     setSubmitting(true);
     setServerError(null);
+    setConflict(false);
     try {
       const updated = await updateRecipe(
         detail.id,
@@ -123,10 +127,7 @@ export default function EditRecipePage({
           setServerError("Bạn cần đăng nhập để sửa công thức.");
         else if (err.status === 403)
           setServerError("Bạn không có quyền sửa công thức này.");
-        else if (err.status === 409)
-          setServerError(
-            "Dữ liệu đã bị thay đổi bởi người khác. Vui lòng tải lại trang."
-          );
+        else if (err.status === 409) setConflict(true);
         else if (err.errors) setErrors(mapBackendErrors(err.errors));
         else setServerError(err.message);
       } else {
@@ -134,6 +135,26 @@ export default function EditRecipePage({
       }
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleReload = async () => {
+    setReloading(true);
+    setServerError(null);
+    try {
+      const fresh = await getRecipeBySlug(decodeURIComponent(slug));
+      if (!fresh) {
+        setNotFound(true);
+        return;
+      }
+      // Chi cap nhat rowVersion, GIU NGUYEN du lieu nguoi dung dang nhap.
+      setDetail(fresh);
+      setConflict(false);
+      setReloaded(true);
+    } catch {
+      setServerError("Không tải được bản mới. Vui lòng thử lại.");
+    } finally {
+      setReloading(false);
     }
   };
 
@@ -172,6 +193,33 @@ export default function EditRecipePage({
       {serverError && (
         <p className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
           {serverError}
+        </p>
+      )}
+
+      {conflict && (
+        <div className="flex flex-col gap-2 rounded-lg border border-amber-400 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          <p className="font-medium">
+            Dữ liệu đã bị thay đổi bởi người khác (mã 409).
+          </p>
+          <p>
+            Nhấn tải lại để lấy bản mới nhất — nội dung bạn đang nhập được
+            giữ nguyên, sau đó nhấn “Lưu thay đổi” lại.
+          </p>
+          <button
+            type="button"
+            onClick={handleReload}
+            disabled={reloading}
+            className="w-fit rounded-full border border-amber-500 px-4 py-1.5 text-sm font-medium hover:bg-amber-100 disabled:opacity-50"
+          >
+            {reloading ? "Đang tải…" : "Tải bản mới & giữ dữ liệu đã nhập"}
+          </button>
+        </div>
+      )}
+
+      {reloaded && !conflict && (
+        <p className="rounded-lg border border-green-300 bg-green-50 px-3 py-2 text-sm text-green-800">
+          Đã tải bản mới nhất. Dữ liệu bạn nhập được giữ nguyên — nhấn “Lưu
+          thay đổi” để lưu lại.
         </p>
       )}
 
