@@ -1,5 +1,6 @@
 using FoodBlog.API.Endpoints;
 using FoodBlog.Application;
+using FoodBlog.Application.Common.Interfaces;
 using FoodBlog.Domain.Entities;
 using FoodBlog.Infrastructure.Persistence;
 using FoodBlog.Infrastructure.Seed;
@@ -20,6 +21,7 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 });
 builder.Services.AddDbContext<FoodBlogDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("Default")));
+builder.Services.AddScoped<IFoodBlogDbContext>(sp => sp.GetRequiredService<FoodBlogDbContext>());
 builder.Services.AddIdentity<ApplicationUser, IdentityRole>()
     .AddEntityFrameworkStores<FoodBlogDbContext>()
     .AddDefaultTokenProviders();
