@@ -1,4 +1,6 @@
 using FoodBlog.API.Endpoints;
+using FoodBlog.Application;
+using FoodBlog.Application.Common.Interfaces;
 using FoodBlog.Domain.Entities;
 using FoodBlog.Infrastructure.Persistence;
 using FoodBlog.Infrastructure.Seed;
@@ -10,6 +12,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddOpenApi();
 builder.Services.AddMemoryCache();
+builder.Services.AddApplication();
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
     options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
@@ -18,6 +21,7 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 });
 builder.Services.AddDbContext<FoodBlogDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("Default")));
+builder.Services.AddScoped<IFoodBlogDbContext>(sp => sp.GetRequiredService<FoodBlogDbContext>());
 builder.Services.AddIdentity<ApplicationUser, IdentityRole>()
     .AddEntityFrameworkStores<FoodBlogDbContext>()
     .AddDefaultTokenProviders();

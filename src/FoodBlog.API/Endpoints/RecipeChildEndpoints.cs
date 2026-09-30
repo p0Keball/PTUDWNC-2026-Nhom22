@@ -1,3 +1,4 @@
+using FoodBlog.Application.Features.Recipes;
 using FoodBlog.Domain.Entities;
 using FoodBlog.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -36,7 +37,7 @@ public static class RecipeChildEndpoints
             await db.SaveChangesAsync();
             EvictListCache();
             return Results.Created($"/api/v1/recipes/{id}/steps/{step.Id}",
-                new StepDto(step.Id, step.StepNumber, step.Title, step.Description, step.TimerMinutes, step.ImageUrl));
+                new RecipeStepDto(step.Id, step.StepNumber, step.Title, step.Description, step.TimerMinutes, step.ImageUrl));
         });
 
         group.MapPut("/steps/{stepId:guid}", async (Guid id, Guid stepId, UpdateStepRequest req, FoodBlogDbContext db) =>
@@ -49,7 +50,7 @@ public static class RecipeChildEndpoints
             step.ImageUrl = req.ImageUrl;
             await db.SaveChangesAsync();
             EvictListCache();
-            return Results.Ok(new StepDto(step.Id, step.StepNumber, step.Title, step.Description, step.TimerMinutes, step.ImageUrl));
+            return Results.Ok(new RecipeStepDto(step.Id, step.StepNumber, step.Title, step.Description, step.TimerMinutes, step.ImageUrl));
         });
 
         group.MapDelete("/steps/{stepId:guid}", async (Guid id, Guid stepId, FoodBlogDbContext db) =>
@@ -83,7 +84,7 @@ public static class RecipeChildEndpoints
             await db.SaveChangesAsync();
             EvictListCache();
             return Results.Created($"/api/v1/recipes/{id}/ingredients/{ingredient.Id}",
-                new IngredientDto(ingredient.Id, ingredient.Name, ingredient.Quantity, ingredient.Unit, ingredient.Notes, ingredient.OrderIndex));
+                new RecipeIngredientDto(ingredient.Id, ingredient.Name, ingredient.Quantity, ingredient.Unit, ingredient.Notes, ingredient.OrderIndex));
         });
 
         group.MapPut("/ingredients/{ingId:guid}", async (Guid id, Guid ingId, UpdateIngredientRequest req, FoodBlogDbContext db) =>
@@ -96,7 +97,7 @@ public static class RecipeChildEndpoints
             ingredient.Notes = req.Notes;
             await db.SaveChangesAsync();
             EvictListCache();
-            return Results.Ok(new IngredientDto(ingredient.Id, ingredient.Name, ingredient.Quantity, ingredient.Unit, ingredient.Notes, ingredient.OrderIndex));
+            return Results.Ok(new RecipeIngredientDto(ingredient.Id, ingredient.Name, ingredient.Quantity, ingredient.Unit, ingredient.Notes, ingredient.OrderIndex));
         });
 
         group.MapDelete("/ingredients/{ingId:guid}", async (Guid id, Guid ingId, FoodBlogDbContext db) =>
@@ -164,7 +165,7 @@ public static class RecipeChildEndpoints
     private static IResult NotFound(Guid id) =>
         Results.NotFound(new { code = "RECIPE_NOT_FOUND", title = "Không tìm thấy công thức.", id });
 
-    private static ImageDto ToImage(RecipeImage i) => new(i.Id, i.OriginalUrl, i.MediumUrl, i.ThumbnailUrl,
+    private static RecipeImageDto ToImage(RecipeImage i) => new(i.Id, i.OriginalUrl, i.MediumUrl, i.ThumbnailUrl,
         i.AltText, i.IsPrimary, i.OrderIndex,
         i.ThumbnailUrl is null && i.MediumUrl is null ? "pending" : "ready");
 }
