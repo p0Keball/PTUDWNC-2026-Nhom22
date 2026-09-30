@@ -131,6 +131,24 @@ async function throwApiError(res: Response, fallback: string): Promise<never> {
 const API_BASE =
   process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5000";
 
+export interface Category {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  imageUrl: string | null;
+  orderIndex: number;
+  recipeCount: number;
+}
+
+export async function getCategories(): Promise<Category[]> {
+  const res = await fetch(`${API_BASE}/api/v1/categories`, {
+    next: { revalidate: 3600 },
+  });
+  if (!res.ok) throw new Error(`Failed to fetch categories: ${res.status}`);
+  return res.json();
+}
+
 export async function getRecipes(
   page = 1,
   pageSize = 12
