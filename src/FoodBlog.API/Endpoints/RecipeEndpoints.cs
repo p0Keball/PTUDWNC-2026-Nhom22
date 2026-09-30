@@ -104,35 +104,12 @@ public static class RecipeEndpoints
 
         group.MapPut("/{id:guid}", async (Guid id, UpdateRecipeRequest req, ISender sender) =>
         {
-            try
-            {
-                var result = await sender.Send(new UpdateRecipeCommand(
-                    id, req.Title, req.Description, req.Instructions, req.CategoryId,
-                    req.PrepTimeMinutes, req.CookTimeMinutes, req.Servings, req.Difficulty, req.RowVersion,
-                    req.Nutrition));
-                EvictListCache();
-                return Results.Ok(result);
-            }
-            catch (RecipeConcurrencyException ex)
-            {
-                return Results.Conflict(new { code = "RECIPE_CONCURRENCY_CONFLICT", title = ex.Message });
-            }
-            catch (RecipeUnauthorizedException)
-            {
-                return Results.Unauthorized();
-            }
-            catch (RecipeForbiddenException ex)
-            {
-                return Results.Json(new { code = "RECIPE_FORBIDDEN", title = ex.Message }, statusCode: 403);
-            }
-            catch (FluentValidation.ValidationException ex)
-            {
-                return Results.UnprocessableEntity(new { title = "Validation failed", errors = ToErrors(ex) });
-            }
-            catch (RecipeNotFoundException)
-            {
-                return Results.NotFound(new { code = "RECIPE_NOT_FOUND", title = "Không tìm thấy công thức.", id });
-            }
+            var result = await sender.Send(new UpdateRecipeCommand(
+                id, req.Title, req.Description, req.Instructions, req.CategoryId,
+                req.PrepTimeMinutes, req.CookTimeMinutes, req.Servings, req.Difficulty, req.RowVersion,
+                req.Nutrition));
+            EvictListCache();
+            return Results.Ok(result);
         });
 
         group.MapPatch("/{id:guid}/publish", async (Guid id, FoodBlogDbContext db) =>

@@ -1,4 +1,5 @@
 using FoodBlog.API.Endpoints;
+using FoodBlog.API.Middlewares;
 using FoodBlog.API.Services;
 using FoodBlog.Application;
 using FoodBlog.Application.Common.Interfaces;
@@ -34,6 +35,7 @@ builder.Services.AddIdentity<ApplicationUser, IdentityRole>()
 var app = builder.Build();
 
 app.UseForwardedHeaders();
+app.UseMiddleware<GlobalExceptionMiddleware>();
 
 using (var scope = app.Services.CreateScope())
 {
