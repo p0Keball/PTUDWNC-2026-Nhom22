@@ -1,4 +1,5 @@
 using FoodBlog.API.Endpoints;
+using FoodBlog.Application;
 using FoodBlog.Domain.Entities;
 using FoodBlog.Infrastructure.Persistence;
 using FoodBlog.Infrastructure.Seed;
@@ -10,6 +11,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddOpenApi();
 builder.Services.AddMemoryCache();
+builder.Services.AddApplication();
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
     options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
