@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getRecipeBySlug } from "@/lib/api";
 
@@ -15,9 +16,10 @@ export default async function RecipeDetailPage({
 
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-6 p-4 sm:p-6">
-      <div className="flex flex-col gap-2">
-        <h1 className="text-2xl font-bold sm:text-3xl">{recipe.title}</h1>
-        <div className="flex flex-wrap gap-2 text-xs text-zinc-500">
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex flex-col gap-2">
+          <h1 className="text-2xl font-bold sm:text-3xl">{recipe.title}</h1>
+          <div className="flex flex-wrap gap-2 text-xs text-zinc-500">
           <span className="rounded-full bg-zinc-100 px-2 py-1 dark:bg-zinc-800">
             {recipe.difficulty}
           </span>
@@ -29,8 +31,15 @@ export default async function RecipeDetailPage({
           </span>
           <span className="rounded-full bg-zinc-100 px-2 py-1 dark:bg-zinc-800">
             {recipe.servings} khẩu phần
-          </span>
+            </span>
+          </div>
         </div>
+        <Link
+          href={`/recipes/${encodeURIComponent(recipe.slug)}/edit`}
+          className="shrink-0 rounded-full border px-4 py-2 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-800"
+        >
+          Sửa
+        </Link>
       </div>
 
       {primary && (

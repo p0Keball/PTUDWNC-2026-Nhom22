@@ -9,6 +9,7 @@ import RecipeForm, {
   type RecipeFormErrors,
   type RecipeFormValues,
 } from "@/components/RecipeForm";
+import { RecipeFormSkeleton } from "@/components/RecipeSkeleton";
 import {
   ApiError,
   getCategories,
@@ -160,8 +161,9 @@ export default function EditRecipePage({
 
   if (loading)
     return (
-      <main className="mx-auto w-full max-w-3xl flex-1 p-4 sm:p-6">
-        <p className="text-sm text-zinc-500">Đang tải công thức…</p>
+      <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-6 p-4 sm:p-6">
+        <div className="h-8 w-48 rounded bg-zinc-200 dark:bg-zinc-800 animate-pulse" />
+        <RecipeFormSkeleton />
       </main>
     );
 

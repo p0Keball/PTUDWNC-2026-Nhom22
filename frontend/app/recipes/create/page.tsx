@@ -10,6 +10,7 @@ import RecipeForm, {
   type RecipeFormErrors,
   type RecipeFormValues,
 } from "@/components/RecipeForm";
+import { RecipeFormSkeleton } from "@/components/RecipeSkeleton";
 import {
   ApiError,
   createRecipe,
@@ -114,7 +115,7 @@ export default function CreateRecipePage() {
       )}
 
       {loadingCats ? (
-        <p className="text-sm text-zinc-500">Đang tải danh mục…</p>
+        <RecipeFormSkeleton />
       ) : (
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <RecipeForm

@@ -36,3 +36,32 @@ export function RecipeDetailSkeleton() {
     </div>
   );
 }
+
+export function RecipeFormSkeleton() {
+  return (
+    <div className="flex animate-pulse flex-col gap-4" aria-label="Đang tải biểu mẫu">
+      <div className="flex flex-col gap-1.5">
+        <div className="h-4 w-20 rounded bg-zinc-200 dark:bg-zinc-800" />
+        <div className="h-10 w-full rounded-lg bg-zinc-200 dark:bg-zinc-800" />
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <div className="h-4 w-24 rounded bg-zinc-200 dark:bg-zinc-800" />
+        <div className="h-10 w-full rounded-lg bg-zinc-200 dark:bg-zinc-800" />
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <div className="h-4 w-16 rounded bg-zinc-200 dark:bg-zinc-800" />
+        <div className="h-20 w-full rounded-lg bg-zinc-200 dark:bg-zinc-800" />
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <div className="h-4 w-28 rounded bg-zinc-200 dark:bg-zinc-800" />
+        <div className="h-32 w-full rounded-lg bg-zinc-200 dark:bg-zinc-800" />
+      </div>
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div key={i} className="h-10 w-full rounded-lg bg-zinc-200 dark:bg-zinc-800" />
+        ))}
+      </div>
+      <div className="h-11 w-full rounded-lg bg-zinc-200 dark:bg-zinc-800" />
+    </div>
+  );
+}
