@@ -1,5 +1,6 @@
 using FluentValidation;
 using FoodBlog.Application.Common.Interfaces;
+using FoodBlog.Application.Contracts.Persistence;
 using FoodBlog.Application.Features.Recipes;
 using FoodBlog.Domain.Entities;
 using FoodBlog.Domain.Enums;
@@ -42,16 +43,12 @@ public sealed class UpdateRecipeCommandValidator : AbstractValidator<UpdateRecip
     }
 }
 
-public sealed class UpdateRecipeCommandHandler(IFoodBlogDbContext db, ICurrentUserService currentUser)
+public sealed class UpdateRecipeCommandHandler(IUnitOfWork uow, ICurrentUserService currentUser)
     : IRequestHandler<UpdateRecipeCommand, RecipeDetailDto>
 {
     public async Task<RecipeDetailDto> Handle(UpdateRecipeCommand req, CancellationToken ct)
     {
-        var recipe = await db.Recipes
-            .Include(r => r.Steps)
-            .Include(r => r.Ingredients)
-            .Include(r => r.Images)
-            .FirstOrDefaultAsync(r => r.Id == req.Id, ct);
+        var recipe = await uow.Recipes.GetForUpdateAsync(req.Id, ct);
 
         if (recipe is null)
             throw new RecipeNotFoundException(req.Id);
@@ -76,7 +73,7 @@ public sealed class UpdateRecipeCommandHandler(IFoodBlogDbContext db, ICurrentUs
         if (recipe.RowVersion is null || !recipe.RowVersion.SequenceEqual(clientVersion))
             throw new RecipeConcurrencyException();
 
-        if (!await db.Categories.AnyAsync(c => c.Id == req.CategoryId, ct))
+        if (!await uow.Categories.ExistsAsync(req.CategoryId, ct))
             throw new ValidationException(
                 [new FluentValidation.Results.ValidationFailure("CategoryId", "Danh mục không tồn tại.")]);
 
@@ -103,7 +100,7 @@ public sealed class UpdateRecipeCommandHandler(IFoodBlogDbContext db, ICurrentUs
 
         try
         {
-            await db.SaveChangesAsync(ct);
+            await uow.SaveChangesAsync(ct);
         }
         catch (DbUpdateConcurrencyException)
         {
