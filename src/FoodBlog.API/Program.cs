@@ -1,9 +1,11 @@
 using FoodBlog.API.Endpoints;
 using FoodBlog.Domain.Entities;
+using FoodBlog.Domain.Exceptions;
 using FoodBlog.Infrastructure.Persistence;
 using FoodBlog.Infrastructure.Seed;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -13,7 +15,7 @@ builder.Services.AddMemoryCache();
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
     options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
-    options.KnownNetworks.Clear();
+    options.KnownIPNetworks.Clear();
     options.KnownProxies.Clear();
 });
 builder.Services.AddDbContext<FoodBlogDbContext>(options =>
@@ -25,6 +27,27 @@ builder.Services.AddIdentity<ApplicationUser, IdentityRole>()
 var app = builder.Build();
 
 app.UseForwardedHeaders();
+app.UseExceptionHandler(errorApp => errorApp.Run(async context =>
+{
+    var exception = context.Features.Get<IExceptionHandlerFeature>()?.Error;
+    var (statusCode, body) = exception switch
+    {
+        ValidationException validation => (StatusCodes.Status422UnprocessableEntity,
+            (object)new { title = validation.Message, errors = validation.Errors }),
+        NotFoundException notFound => (StatusCodes.Status404NotFound,
+            (object)new { title = notFound.Message }),
+        ConflictException conflict => (StatusCodes.Status409Conflict,
+            (object)new { title = conflict.Message }),
+        UnauthorizedException unauthorized => (StatusCodes.Status401Unauthorized,
+            (object)new { title = unauthorized.Message }),
+        DomainException domain => (StatusCodes.Status400BadRequest,
+            (object)new { title = domain.Message }),
+        _ => (StatusCodes.Status500InternalServerError,
+            (object)new { title = "Đã xảy ra lỗi không mong muốn." })
+    };
+
+    await Results.Json(body, statusCode: statusCode).ExecuteAsync(context);
+}));
 
 using (var scope = app.Services.CreateScope())
 {
