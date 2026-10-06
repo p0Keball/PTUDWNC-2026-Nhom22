@@ -1,21 +1,18 @@
+using System;
 using FoodBlog.Domain.Common;
 
 namespace FoodBlog.Domain.Entities;
 
 public class RecipeImage : BaseEntity
 {
-    public Guid RecipeId { get; set; }
-    public string OriginalUrl { get; set; } = string.Empty;
-    public string? MediumUrl { get; set; }
-    public string? ThumbnailUrl { get; set; }
-    public string? AltText { get; set; }
-    public bool IsPrimary { get; set; }
-    public int OrderIndex { get; set; }
+    public Guid RecipeId { get; private set; }
+    public string OriginalUrl { get; private set; } = default!;
+    public string? MediumUrl { get; private set; }
+    public string? ThumbnailUrl { get; private set; }
+    public string? AltText { get; private set; }
+    public bool IsPrimary { get; private set; }
+    public int OrderIndex { get; private set; }
 
-<<<<<<< Updated upstream
-    public Recipe? Recipe { get; set; }
-}
-=======
     // Navigation property
     public Recipe Recipe { get; private set; } = default!;
     
@@ -37,6 +34,13 @@ public class RecipeImage : BaseEntity
         };
     }
 
-    public void SetPrimary(bool isPrimary) => IsPrimary = isPrimary;
+    public void SetPrimary(bool isPrimary)
+    {
+        IsPrimary = isPrimary;
+    }
+
+    public void SetOrder(int orderIndex)
+    {
+        OrderIndex = orderIndex;
+    }
 }
->>>>>>> Stashed changes

@@ -1,20 +1,17 @@
+using System;
 using FoodBlog.Domain.Common;
 
 namespace FoodBlog.Domain.Entities;
 
 public class RecipeIngredient : BaseEntity
 {
-    public Guid RecipeId { get; set; }
-    public string Name { get; set; } = string.Empty;
-    public decimal? Quantity { get; set; }
-    public string? Unit { get; set; }
-    public string? Notes { get; set; }
-    public int OrderIndex { get; set; }
+    public Guid RecipeId { get; private set; }
+    public string Name { get; private set; } = default!;
+    public decimal? Quantity { get; private set; }
+    public string? Unit { get; private set; }
+    public string? Notes { get; private set; }
+    public int OrderIndex { get; private set; }
 
-<<<<<<< Updated upstream
-    public Recipe? Recipe { get; set; }
-}
-=======
     // Navigation property
     public Recipe Recipe { get; private set; } = default!;
 
@@ -42,5 +39,9 @@ public class RecipeIngredient : BaseEntity
         Unit = unit;
         Notes = notes;
     }
+
+    public void SetOrder(int orderIndex)
+    {
+        OrderIndex = orderIndex;
+    }
 }
->>>>>>> Stashed changes

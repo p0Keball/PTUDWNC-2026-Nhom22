@@ -1,20 +1,17 @@
+using System;
 using FoodBlog.Domain.Common;
 
 namespace FoodBlog.Domain.Entities;
 
 public class RecipeStep : BaseEntity
 {
-    public Guid RecipeId { get; set; }
-    public int StepNumber { get; set; }
-    public string Title { get; set; } = string.Empty;
-    public string Description { get; set; } = string.Empty;
-    public int? TimerMinutes { get; set; }
-    public string? ImageUrl { get; set; }
+    public Guid RecipeId { get; private set; }
+    public int StepNumber { get; private set; }
+    public string Title { get; private set; } = default!;
+    public string Description { get; private set; } = default!;
+    public int? TimerMinutes { get; private set; }
+    public string? ImageUrl { get; private set; }
 
-<<<<<<< Updated upstream
-    public Recipe? Recipe { get; set; }
-}
-=======
     // Navigation property
     public Recipe Recipe { get; private set; } = default!;
 
@@ -43,6 +40,8 @@ public class RecipeStep : BaseEntity
         ImageUrl = imageUrl;
     }
 
-    public void SetStepNumber(int stepNumber) => StepNumber = stepNumber;
+    public void Renumber(int stepNumber)
+    {
+        StepNumber = stepNumber;
+    }
 }
->>>>>>> Stashed changes
