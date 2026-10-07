@@ -17,6 +17,13 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddOpenApi();
 builder.Services.AddApplication();
 builder.Services.AddMemoryCache();
+builder.Services.AddOutputCache(options =>
+{
+    options.AddPolicy("RecipeList", policy => policy
+        .Tag("recipes")
+        .Expire(TimeSpan.FromMinutes(15))
+        .SetVaryByQuery("page", "pageSize", "categoryId", "difficulty", "maxCookTime", "sort"));
+});
 builder.Services.AddHttpClient<GoogleLoginCommandHandler>();
 builder.Services.AddFileStorage(builder.Configuration);
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
@@ -58,6 +65,7 @@ app.UseForwardedHeaders();
 app.UseMiddleware<GlobalExceptionMiddleware>();
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseOutputCache();
 
 using (var scope = app.Services.CreateScope())
 {

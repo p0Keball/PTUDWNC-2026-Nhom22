@@ -26,24 +26,16 @@ public static class RecipeEndpoints
     {
         var group = app.MapGroup("/api/v1/recipes");
 
-        group.MapGet("/", async (ISender sender, IMemoryCache cache,
+        group.MapGet("/", async (ISender sender,
             int page = 1, int pageSize = 12, Guid? categoryId = null,
             int? difficulty = null, int? maxCookTime = null, string sort = "-createdAt") =>
         {
             page = Math.Max(page, 1);
             pageSize = Math.Clamp(pageSize, 1, 50);
-            var key = $"recipes:list:{page}:{pageSize}:{categoryId}:{difficulty}:{maxCookTime}:{sort}";
-
-            if (cache.TryGetValue(key, out object? cached) && cached is not null)
-                return Results.Ok(cached);
 
             var result = await sender.Send(new GetRecipesQuery(page, pageSize, categoryId, difficulty, maxCookTime, sort));
-            var shaped = new { items = result.Items, totalCount = result.TotalCount, page = result.Page, pageSize = result.PageSize };
-            cache.Set(key, shaped, new MemoryCacheEntryOptions()
-                .SetAbsoluteExpiration(TimeSpan.FromMinutes(15))
-                .AddExpirationToken(new CancellationChangeToken(_listCacheCts.Token)));
-            return Results.Ok(shaped);
-        });
+            return Results.Ok(new { items = result.Items, totalCount = result.TotalCount, page = result.Page, pageSize = result.PageSize });
+        }).CacheOutput("RecipeList");
 
         group.MapGet("/search", async (FoodBlogDbContext db, string? q, int page = 1, int pageSize = 12) =>
         {
