@@ -14,7 +14,7 @@ public record RecipeDetailDto(Guid Id, string Title, string Slug, string Descrip
     NutritionDto? Nutrition, List<RecipeStepDto> Steps, List<RecipeIngredientDto> Ingredients, List<RecipeImageDto> Images);
 public record RecipeSummaryDto(Guid Id, string Title, string Slug, string Description,
     string? PrimaryImageUrl, int PrepTimeMinutes, int CookTimeMinutes, int Servings,
-    string Difficulty, DateTime? PublishedAt);
+    string Difficulty, string Status, DateTime? PublishedAt);
 public record PagedResult<T>(List<T> Items, int TotalCount, int Page, int PageSize);
 public record RecipeStatusDto(Guid Id, string Status);
 
@@ -39,5 +39,5 @@ public static class RecipeMapper
     public static RecipeSummaryDto ToSummary(Recipe r, string? primaryImageUrl) => new(
         r.Id, r.Title, r.Slug, r.Description, primaryImageUrl,
         r.PrepTimeMinutes, r.CookTimeMinutes, r.Servings,
-        r.Difficulty.ToString(), r.PublishedAt);
+        r.Difficulty.ToString(), r.Status.ToString(), r.PublishedAt);
 }

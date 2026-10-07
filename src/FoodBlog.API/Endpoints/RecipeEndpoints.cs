@@ -54,13 +54,30 @@ public static class RecipeEndpoints
             var items = await baseQuery
                 .OrderByDescending(r => r.PublishedAt)
                 .Skip((page - 1) * pageSize).Take(pageSize)
-                .Select(r => new RecipeSummaryDto(r.Id, r.Title, r.Slug, r.Description,
+                .Select(r => new FoodBlog.Application.Features.Recipes.RecipeSummaryDto(r.Id, r.Title, r.Slug, r.Description,
                     r.Images.Where(i => i.IsPrimary).Select(i => i.OriginalUrl).FirstOrDefault(),
                     r.PrepTimeMinutes, r.CookTimeMinutes, r.Servings,
-                    r.Difficulty.ToString(), r.PublishedAt))
+                    r.Difficulty.ToString(), r.Status.ToString(), r.PublishedAt))
                 .ToListAsync();
 
             return Results.Ok(new { items, totalCount = total, page, pageSize });
+        });
+
+        group.MapGet("/mine", async (ISender sender,
+            int page = 1, int pageSize = 12, string? status = null) =>
+        {
+            page = Math.Max(page, 1);
+            pageSize = Math.Clamp(pageSize, 1, 50);
+
+            try
+            {
+                var result = await sender.Send(new GetMyRecipesQuery(page, pageSize, status));
+                return Results.Ok(new { items = result.Items, totalCount = result.TotalCount, page = result.Page, pageSize = result.PageSize });
+            }
+            catch (FluentValidation.ValidationException ex)
+            {
+                return Results.UnprocessableEntity(new { title = "Validation failed", errors = ToErrors(ex) });
+            }
         });
 
         group.MapGet("/{slug}", async (string slug, ISender sender) =>
