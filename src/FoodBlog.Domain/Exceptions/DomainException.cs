@@ -2,11 +2,8 @@ namespace FoodBlog.Domain.Exceptions;
 
 public abstract class DomainException : Exception
 {
-    protected DomainException(string message, string? errorCode = null)
+    protected DomainException(string message)
         : base(message)
     {
-        ErrorCode = errorCode;
     }
-
-    public string? ErrorCode { get; }
 }
