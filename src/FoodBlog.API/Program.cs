@@ -18,8 +18,8 @@ using Scalar.AspNetCore;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddOpenApi();
-builder.Services.AddMemoryCache();
 builder.Services.AddApplication();
+builder.Services.AddMemoryCache();
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("Frontend", policy =>
@@ -52,6 +52,13 @@ builder.Services.AddRateLimiter(options =>
         limiter.Window = TimeSpan.FromMinutes(1);
         limiter.QueueLimit = 0;
     });
+});
+builder.Services.AddOutputCache(options =>
+{
+    options.AddPolicy("RecipeList", policy => policy
+        .Tag("recipes")
+        .Expire(TimeSpan.FromMinutes(15))
+        .SetVaryByQuery("page", "pageSize", "categoryId", "difficulty", "maxCookTime", "sort"));
 });
 builder.Services.AddHttpClient<GoogleLoginCommandHandler>();
 builder.Services.AddFileStorage(builder.Configuration);
@@ -96,6 +103,7 @@ app.UseRateLimiter();
 app.UseMiddleware<GlobalExceptionMiddleware>();
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseOutputCache();
 
 using (var scope = app.Services.CreateScope())
 {
