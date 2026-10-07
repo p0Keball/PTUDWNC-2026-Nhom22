@@ -112,49 +112,30 @@ public static class RecipeEndpoints
             return Results.Ok(result);
         });
 
-        group.MapPatch("/{id:guid}/publish", async (Guid id, FoodBlogDbContext db) =>
+        group.MapPatch("/{id:guid}/publish", async (Guid id, ISender sender) =>
         {
-            var recipe = await db.Recipes.Include(r => r.Steps).FirstOrDefaultAsync(r => r.Id == id);
-            if (recipe is null)
-                return Results.NotFound(new { code = "RECIPE_NOT_FOUND", title = "Không tìm thấy công thức.", id });
-            if (recipe.Steps.Count == 0)
-                return Results.UnprocessableEntity(new { code = "RECIPE_PUBLISH_INCOMPLETE", title = "Công thức cần ít nhất 1 bước thực hiện để xuất bản." });
-            recipe.Status = RecipeStatus.Published;
-            recipe.PublishedAt = DateTime.UtcNow;
-            await db.SaveChangesAsync();
+            var result = await sender.Send(new PublishRecipeCommand(id));
             EvictListCache();
-            return Results.Ok(new { recipe.Id, status = recipe.Status.ToString() });
+            return Results.Ok(result);
         });
 
-        group.MapPatch("/{id:guid}/unpublish", async (Guid id, FoodBlogDbContext db) =>
+        group.MapPatch("/{id:guid}/unpublish", async (Guid id, ISender sender) =>
         {
-            var recipe = await db.Recipes.FirstOrDefaultAsync(r => r.Id == id);
-            if (recipe is null)
-                return Results.NotFound(new { code = "RECIPE_NOT_FOUND", title = "Không tìm thấy công thức.", id });
-            recipe.Status = RecipeStatus.Draft;
-            await db.SaveChangesAsync();
+            var result = await sender.Send(new UnpublishRecipeCommand(id));
             EvictListCache();
-            return Results.Ok(new { recipe.Id, status = recipe.Status.ToString() });
+            return Results.Ok(result);
         });
 
-        group.MapPatch("/{id:guid}/archive", async (Guid id, FoodBlogDbContext db) =>
+        group.MapPatch("/{id:guid}/archive", async (Guid id, ISender sender) =>
         {
-            var recipe = await db.Recipes.FirstOrDefaultAsync(r => r.Id == id);
-            if (recipe is null)
-                return Results.NotFound(new { code = "RECIPE_NOT_FOUND", title = "Không tìm thấy công thức.", id });
-            recipe.Status = RecipeStatus.Archived;
-            await db.SaveChangesAsync();
+            var result = await sender.Send(new ArchiveRecipeCommand(id));
             EvictListCache();
-            return Results.Ok(new { recipe.Id, status = recipe.Status.ToString() });
+            return Results.Ok(result);
         });
 
-        group.MapDelete("/{id:guid}", async (Guid id, FoodBlogDbContext db) =>
+        group.MapDelete("/{id:guid}", async (Guid id, ISender sender) =>
         {
-            var recipe = await db.Recipes.FirstOrDefaultAsync(r => r.Id == id);
-            if (recipe is null)
-                return Results.NotFound(new { code = "RECIPE_NOT_FOUND", title = "Không tìm thấy công thức.", id });
-            recipe.IsDeleted = true;
-            await db.SaveChangesAsync();
+            await sender.Send(new DeleteRecipeCommand(id));
             EvictListCache();
             return Results.NoContent();
         });
