@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using FluentValidation;
 using FoodBlog.Application.Common;
+using FoodBlog.Application.Features.Recipes;
 using FoodBlog.Application.Interfaces;
 using FoodBlog.Domain.Entities;
 using FoodBlog.Infrastructure.Persistence;
@@ -102,7 +103,7 @@ public static class RecipeChildEndpoints
             await db.SaveChangesAsync(ct);
             EvictListCache();
             var result = await db.RecipeSteps.Where(s => s.RecipeId == id).OrderBy(s => s.StepNumber)
-                .Select(s => new StepDto(s.Id, s.StepNumber, s.Title, s.Description, s.TimerMinutes, s.ImageUrl))
+                .Select(s => new RecipeStepDto(s.Id, s.StepNumber, s.Title, s.Description, s.TimerMinutes, s.ImageUrl))
                 .ToListAsync(ct);
             return Results.Ok(result);
         });
@@ -180,7 +181,7 @@ public static class RecipeChildEndpoints
             await db.SaveChangesAsync(ct);
             EvictListCache();
             var result = await db.RecipeIngredients.Where(i => i.RecipeId == id).OrderBy(i => i.OrderIndex)
-                .Select(i => new IngredientDto(i.Id, i.Name, i.Quantity, i.Unit, i.Notes, i.OrderIndex))
+                .Select(i => new RecipeIngredientDto(i.Id, i.Name, i.Quantity, i.Unit, i.Notes, i.OrderIndex))
                 .ToListAsync(ct);
             return Results.Ok(result);
         });
@@ -438,7 +439,7 @@ public static class RecipeChildEndpoints
         return ForbidIfNotOwner(authorId, user);
     }
 
-    private static ImageDto ToImage(RecipeImage i) => new(i.Id, i.OriginalUrl, i.MediumUrl, i.ThumbnailUrl,
+    private static RecipeImageDto ToImage(RecipeImage i) => new(i.Id, i.OriginalUrl, i.MediumUrl, i.ThumbnailUrl,
         i.AltText, i.IsPrimary, i.OrderIndex,
         i.ThumbnailUrl is null && i.MediumUrl is null ? "pending" : "ready");
 
