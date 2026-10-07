@@ -16,6 +16,7 @@ public record RecipeSummaryDto(Guid Id, string Title, string Slug, string Descri
     string? PrimaryImageUrl, int PrepTimeMinutes, int CookTimeMinutes, int Servings,
     string Difficulty, DateTime? PublishedAt);
 public record PagedResult<T>(List<T> Items, int TotalCount, int Page, int PageSize);
+public record RecipeStatusDto(Guid Id, string Status);
 
 public static class RecipeMapper
 {

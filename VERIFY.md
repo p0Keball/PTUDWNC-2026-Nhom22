@@ -69,7 +69,7 @@ dotnet run --project src/FoodBlog.API --urls "http://localhost:5000"
 | GET | `/api/v1/recipes/search?q=` | FTS unaccent ("pho" tìm được "Phở"); thiếu `q` → 422 |
 | GET | `/api/v1/recipes/{slug}` | Draft/Archived → 403 |
 | POST | `/api/v1/recipes` | luôn tạo Draft → 201 |
-| PUT | `/api/v1/recipes/{id}` | body bắt buộc `rowVersion` (base64); cũ → 422 `RECIPE_CONCURRENCY_CONFLICT` |
+| PUT | `/api/v1/recipes/{id}` | can JWT (401 thieu token, 403 khac chu); body bat buoc `rowVersion` (base64); cu -> 409 `RECIPE_CONCURRENCY_CONFLICT`; sai validate -> 422; chi tiet: `scripts/verify-recipe-update.ps1` |
 | PATCH | `/api/v1/recipes/{id}/publish` | cần ≥1 step, không thì 422 |
 | PATCH | `/api/v1/recipes/{id}/unpublish`, `/archive` | đổi trạng thái |
 | DELETE | `/api/v1/recipes/{id}` | **xóa mềm** (`IsDeleted=true`), row còn trong DB → 204 |

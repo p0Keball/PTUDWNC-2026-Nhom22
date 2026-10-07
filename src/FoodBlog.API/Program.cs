@@ -1,6 +1,9 @@
 using FoodBlog.API.Endpoints;
+using FoodBlog.API.Middlewares;
+using FoodBlog.API.Services;
 using FoodBlog.Application;
 using FoodBlog.Application.Common.Interfaces;
+using FoodBlog.Application.Contracts.Persistence;
 using FoodBlog.Domain.Entities;
 using FoodBlog.Infrastructure.Persistence;
 using FoodBlog.Infrastructure.Seed;

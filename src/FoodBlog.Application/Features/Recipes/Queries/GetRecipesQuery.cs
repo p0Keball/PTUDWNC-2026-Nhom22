@@ -44,6 +44,7 @@ public sealed class GetRecipesQueryHandler(IFoodBlogDbContext db) : IRequestHand
 
         var total = await query.CountAsync(ct);
         var items = await query
+            .AsNoTracking()
             .Skip((page - 1) * pageSize).Take(pageSize)
             .Select(r => new RecipeSummaryDto(r.Id, r.Title, r.Slug, r.Description,
                 r.Images.Where(i => i.IsPrimary).Select(i => i.OriginalUrl).FirstOrDefault(),

@@ -69,8 +69,85 @@ export interface RecipeDetail {
   }[];
 }
 
+export interface RecipeNutritionInput {
+  calories?: number | null;
+  protein?: number | null;
+  carbohydrates?: number | null;
+  fat?: number | null;
+  fiber?: number | null;
+  sodium?: number | null;
+}
+
+export interface CreateRecipeInput {
+  title: string;
+  description: string;
+  instructions: string;
+  categoryId: string;
+  prepTimeMinutes: number;
+  cookTimeMinutes: number;
+  servings: number;
+  difficulty: number;
+}
+
+export interface UpdateRecipeInput extends CreateRecipeInput {
+  rowVersion: string;
+  nutrition?: RecipeNutritionInput | null;
+}
+
+export class ApiError extends Error {
+  status: number;
+  code?: string;
+  errors?: Record<string, string[]>;
+
+  constructor(status: number, message: string, code?: string, errors?: Record<string, string[]>) {
+    super(message);
+    this.status = status;
+    this.code = code;
+    this.errors = errors;
+  }
+}
+
+function authHeaders(token?: string): Record<string, string> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  return headers;
+}
+
+async function throwApiError(res: Response, fallback: string): Promise<never> {
+  let code: string | undefined;
+  let errors: Record<string, string[]> | undefined;
+  let title = fallback;
+  try {
+    const data = await res.json();
+    if (typeof data?.title === "string") title = data.title;
+    if (typeof data?.code === "string") code = data.code;
+    if (data?.errors && typeof data.errors === "object") errors = data.errors;
+  } catch {
+    // giu fallback khi body khong phai JSON
+  }
+  throw new ApiError(res.status, title, code, errors);
+}
+
 const API_BASE =
   process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5000";
+
+export interface Category {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  imageUrl: string | null;
+  orderIndex: number;
+  recipeCount: number;
+}
+
+export async function getCategories(): Promise<Category[]> {
+  const res = await fetch(`${API_BASE}/api/v1/categories`, {
+    next: { revalidate: 3600 },
+  });
+  if (!res.ok) throw new Error(`Failed to fetch categories: ${res.status}`);
+  return res.json();
+}
 
 export async function getRecipes(
   page = 1,
