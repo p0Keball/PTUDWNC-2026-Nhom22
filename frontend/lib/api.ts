@@ -8,6 +8,7 @@ export interface RecipeSummary {
   cookTimeMinutes: number;
   servings: number;
   difficulty: string;
+  status: string;
   publishedAt: string | null;
 }
 
@@ -414,4 +415,54 @@ export async function searchRecipes(
   });
   if (!res.ok) throw new Error(`Failed to search recipes: ${res.status}`);
   return res.json();
+}
+
+export async function getMyRecipes(
+  page = 1,
+  pageSize = 12,
+  status?: string,
+  token?: string
+): Promise<RecipeListResponse> {
+  const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
+  if (status && status !== "all") params.set("status", status);
+  const res = await fetch(`${API_BASE}/api/v1/recipes/mine?${params}`, {
+    headers: authHeaders(token),
+    cache: "no-store",
+  });
+  if (!res.ok) await throwApiError(res, "Tải danh sách công thức thất bại.");
+  return res.json();
+}
+
+export interface RecipeStatusResult {
+  id: string;
+  status: string;
+}
+
+async function changeRecipeStatus(
+  id: string,
+  action: "publish" | "unpublish" | "archive",
+  token?: string
+): Promise<RecipeStatusResult> {
+  const res = await fetch(
+    `${API_BASE}/api/v1/recipes/${encodeURIComponent(id)}/${action}`,
+    { method: "PATCH", headers: authHeaders(token), cache: "no-store" }
+  );
+  if (!res.ok) await throwApiError(res, "Đổi trạng thái công thức thất bại.");
+  return res.json();
+}
+
+export const publishRecipe = (id: string, token?: string) =>
+  changeRecipeStatus(id, "publish", token);
+export const unpublishRecipe = (id: string, token?: string) =>
+  changeRecipeStatus(id, "unpublish", token);
+export const archiveRecipe = (id: string, token?: string) =>
+  changeRecipeStatus(id, "archive", token);
+
+export async function deleteRecipe(id: string, token?: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/v1/recipes/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    headers: authHeaders(token),
+    cache: "no-store",
+  });
+  if (!res.ok) await throwApiError(res, "Xóa công thức thất bại.");
 }
