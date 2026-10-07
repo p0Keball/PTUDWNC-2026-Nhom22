@@ -326,3 +326,32 @@ export async function uploadRecipeImage(
   await putFileToPresignedUrl(presigned.uploadUrl, file, onProgress, signal);
   return imageApi.confirm(recipeId, presigned.objectKey, altText);
 }
+
+export async function createRecipe(
+  input: CreateRecipeInput,
+  token?: string
+): Promise<RecipeDetail> {
+  const res = await fetch(`${API_BASE}/api/v1/recipes`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify(input),
+    cache: "no-store",
+  });
+  if (!res.ok) await throwApiError(res, "Tạo công thức thất bại.");
+  return res.json();
+}
+
+export async function updateRecipe(
+  id: string,
+  input: UpdateRecipeInput,
+  token?: string
+): Promise<RecipeDetail> {
+  const res = await fetch(`${API_BASE}/api/v1/recipes/${encodeURIComponent(id)}`, {
+    method: "PUT",
+    headers: authHeaders(token),
+    body: JSON.stringify(input),
+    cache: "no-store",
+  });
+  if (!res.ok) await throwApiError(res, "Cập nhật công thức thất bại.");
+  return res.json();
+}
