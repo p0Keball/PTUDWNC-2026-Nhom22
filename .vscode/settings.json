@@ -1,4 +1,5 @@
 {
   "dotnet.defaultSolution": "FoodBlog.slnx",
-  "dockerRun.disableDockerrc": true
+  "dockerRun.disableDockerrc": true,
+  "DockerRun.DisableDockerrc": true
 }

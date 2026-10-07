@@ -5,6 +5,7 @@ using FoodBlog.Domain.Entities;
 using FoodBlog.Infrastructure.Persistence;
 using FoodBlog.Infrastructure.Seed;
 using FoodBlog.Application.Features.Auth.Commands.GoogleLogin;
+using FoodBlog.Application.Options;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
@@ -12,9 +13,23 @@ using Microsoft.EntityFrameworkCore;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddOpenApi();
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("Frontend", policy =>
+    {
+        var frontendOrigin = builder.Configuration["Cors:FrontendOrigin"]
+            ?? "http://localhost:3000";
+        policy.WithOrigins(frontendOrigin)
+            .AllowAnyHeader()
+            .AllowAnyMethod()
+            .AllowCredentials();
+    });
+});
 builder.Services.AddApplication();
 builder.Services.AddMemoryCache();
 builder.Services.AddHttpClient<GoogleLoginCommandHandler>();
+builder.Services.Configure<GoogleOAuthOptions>(
+    builder.Configuration.GetSection(GoogleOAuthOptions.SectionName));
 builder.Services.AddFileStorage(builder.Configuration);
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
@@ -49,6 +64,7 @@ builder.Services.Configure<PasswordHasherOptions>(options =>
 var app = builder.Build();
 
 app.UseForwardedHeaders();
+app.UseCors("Frontend");
 app.UseAuthentication();
 app.UseAuthorization();
 

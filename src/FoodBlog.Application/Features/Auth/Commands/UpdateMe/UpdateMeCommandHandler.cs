@@ -36,14 +36,28 @@ public sealed class UpdateMeCommandHandler : IRequestHandler<UpdateMeCommand, Us
         }
 
         if (payload.AvatarUrl is not null)
-            user.AvatarUrl = string.IsNullOrWhiteSpace(payload.AvatarUrl)
-                ? null
-                : payload.AvatarUrl.Trim();
+        {
+            var avatarUrl = payload.AvatarUrl.Trim();
+            if (avatarUrl.Length > 500)
+                throw new ArgumentException("Ảnh đại diện không được vượt quá 500 ký tự.");
+
+            if (!string.IsNullOrWhiteSpace(avatarUrl) &&
+                (!Uri.TryCreate(avatarUrl, UriKind.Absolute, out var parsedAvatarUrl) ||
+                 (parsedAvatarUrl.Scheme != Uri.UriSchemeHttp &&
+                  parsedAvatarUrl.Scheme != Uri.UriSchemeHttps)))
+                throw new ArgumentException("URL ảnh đại diện phải là địa chỉ HTTP hoặc HTTPS hợp lệ.");
+
+            user.AvatarUrl = string.IsNullOrWhiteSpace(avatarUrl) ? null : avatarUrl;
+        }
 
         if (payload.Bio is not null)
-            user.Bio = string.IsNullOrWhiteSpace(payload.Bio)
-                ? null
-                : payload.Bio.Trim();
+        {
+            var bio = payload.Bio.Trim();
+            if (bio.Length > 1000)
+                throw new ArgumentException("Giới thiệu không được vượt quá 1000 ký tự.");
+
+            user.Bio = string.IsNullOrWhiteSpace(bio) ? null : bio;
+        }
 
         var result = await _userManager.UpdateAsync(user);
         if (!result.Succeeded)

@@ -173,7 +173,8 @@ public static class AuthEndpoints
         {
             var result = await sender.Send(
                 new GoogleLoginCommand(
-                    request.AccessToken,
+                    request.Code,
+                    request.CodeVerifier,
                     httpContext.Connection.RemoteIpAddress?.ToString()),
                 ct);
             return Results.Ok(result);

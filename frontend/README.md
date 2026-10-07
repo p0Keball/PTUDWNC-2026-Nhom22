@@ -16,6 +16,33 @@ bun dev
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
+## Google OAuth
+
+Create a Google OAuth client of type **Web application** and add
+`http://localhost:3000/login` to its authorized redirect URIs. Configure the
+same values in the API and frontend before testing:
+
+```bash
+# frontend/.env.local
+NEXT_PUBLIC_GOOGLE_CLIENT_ID=your-google-client-id
+NEXT_PUBLIC_API_URL=http://localhost:5000
+```
+
+```json
+// src/FoodBlog.API/appsettings.Development.json
+{
+	"GoogleOAuth": {
+		"ClientId": "your-google-client-id",
+		"ClientSecret": "",
+		"RedirectUri": "http://localhost:3000/login"
+	}
+}
+```
+
+The login page creates the PKCE verifier and challenge in the browser. The API
+exchanges the authorization code, verifies the Google profile, links an
+existing user by verified email, or creates a new `Author` account.
+
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
