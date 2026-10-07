@@ -66,7 +66,7 @@ public sealed class UpdateRecipeCommandHandler(IUnitOfWork uow, ICurrentUserServ
         }
         catch
         {
-            throw new ValidationException(
+            throw new FluentValidation.ValidationException(
                 [new FluentValidation.Results.ValidationFailure("RowVersion", "RowVersion không hợp lệ.")]);
         }
 
@@ -74,7 +74,7 @@ public sealed class UpdateRecipeCommandHandler(IUnitOfWork uow, ICurrentUserServ
             throw new RecipeConcurrencyException();
 
         if (!await uow.Categories.ExistsAsync(req.CategoryId, ct))
-            throw new ValidationException(
+            throw new FluentValidation.ValidationException(
                 [new FluentValidation.Results.ValidationFailure("CategoryId", "Danh mục không tồn tại.")]);
 
         recipe.Title = req.Title.Trim();

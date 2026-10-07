@@ -55,7 +55,7 @@ public class GlobalExceptionMiddleware(RequestDelegate next, ILogger<GlobalExcep
     private static (HttpStatusCode Status, string? Code, string Title, Dictionary<string, string[]>? Errors)
         MapException(Exception ex) => ex switch
         {
-            ValidationException vex => (
+            FluentValidation.ValidationException vex => (
                 HttpStatusCode.UnprocessableEntity,
                 "VALIDATION_ERROR",
                 "Validation failed",
