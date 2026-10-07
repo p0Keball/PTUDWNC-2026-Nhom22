@@ -1,4 +1,5 @@
 using FluentValidation;
+using FoodBlog.Application.Common.Interfaces;
 using FoodBlog.Application.Contracts.Persistence;
 using FoodBlog.Application.Features.Recipes;
 using FoodBlog.Domain.Enums;
@@ -17,7 +18,7 @@ public sealed class UnpublishRecipeCommandValidator : AbstractValidator<Unpublis
     }
 }
 
-public sealed class UnpublishRecipeCommandHandler(IUnitOfWork uow)
+public sealed class UnpublishRecipeCommandHandler(IUnitOfWork uow, ICurrentUserService currentUser)
     : IRequestHandler<UnpublishRecipeCommand, RecipeStatusDto>
 {
     public async Task<RecipeStatusDto> Handle(UnpublishRecipeCommand req, CancellationToken ct)
@@ -25,6 +26,12 @@ public sealed class UnpublishRecipeCommandHandler(IUnitOfWork uow)
         var recipe = await uow.Recipes.GetByIdAsync(req.Id, ct);
         if (recipe is null)
             throw new RecipeNotFoundException(req.Id);
+
+        if (!currentUser.IsAuthenticated || currentUser.UserId is null)
+            throw new RecipeUnauthorizedException();
+
+        if (!currentUser.IsAdmin && recipe.AuthorId != currentUser.UserId)
+            throw new RecipeForbiddenException();
 
         recipe.Status = RecipeStatus.Draft;
 

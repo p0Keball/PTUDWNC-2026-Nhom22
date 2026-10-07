@@ -1,4 +1,5 @@
 using FluentValidation;
+using FoodBlog.Application.Common.Interfaces;
 using FoodBlog.Application.Contracts.Persistence;
 using FoodBlog.Application.Features.Recipes;
 using FoodBlog.Domain.Enums;
@@ -17,7 +18,7 @@ public sealed class ArchiveRecipeCommandValidator : AbstractValidator<ArchiveRec
     }
 }
 
-public sealed class ArchiveRecipeCommandHandler(IUnitOfWork uow)
+public sealed class ArchiveRecipeCommandHandler(IUnitOfWork uow, ICurrentUserService currentUser)
     : IRequestHandler<ArchiveRecipeCommand, RecipeStatusDto>
 {
     public async Task<RecipeStatusDto> Handle(ArchiveRecipeCommand req, CancellationToken ct)
@@ -25,6 +26,12 @@ public sealed class ArchiveRecipeCommandHandler(IUnitOfWork uow)
         var recipe = await uow.Recipes.GetByIdAsync(req.Id, ct);
         if (recipe is null)
             throw new RecipeNotFoundException(req.Id);
+
+        if (!currentUser.IsAuthenticated || currentUser.UserId is null)
+            throw new RecipeUnauthorizedException();
+
+        if (!currentUser.IsAdmin && recipe.AuthorId != currentUser.UserId)
+            throw new RecipeForbiddenException();
 
         recipe.Status = RecipeStatus.Archived;
 

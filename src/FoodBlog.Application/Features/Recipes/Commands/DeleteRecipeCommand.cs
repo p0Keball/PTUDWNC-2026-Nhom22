@@ -1,4 +1,5 @@
 using FluentValidation;
+using FoodBlog.Application.Common.Interfaces;
 using FoodBlog.Application.Contracts.Persistence;
 using FoodBlog.Domain.Exceptions;
 using MediatR;
@@ -15,7 +16,7 @@ public sealed class DeleteRecipeCommandValidator : AbstractValidator<DeleteRecip
     }
 }
 
-public sealed class DeleteRecipeCommandHandler(IUnitOfWork uow)
+public sealed class DeleteRecipeCommandHandler(IUnitOfWork uow, ICurrentUserService currentUser)
     : IRequestHandler<DeleteRecipeCommand>
 {
     public async Task Handle(DeleteRecipeCommand req, CancellationToken ct)
@@ -23,6 +24,12 @@ public sealed class DeleteRecipeCommandHandler(IUnitOfWork uow)
         var recipe = await uow.Recipes.GetByIdAsync(req.Id, ct);
         if (recipe is null)
             throw new RecipeNotFoundException(req.Id);
+
+        if (!currentUser.IsAuthenticated || currentUser.UserId is null)
+            throw new RecipeUnauthorizedException();
+
+        if (!currentUser.IsAdmin && recipe.AuthorId != currentUser.UserId)
+            throw new RecipeForbiddenException();
 
         recipe.IsDeleted = true;
 
