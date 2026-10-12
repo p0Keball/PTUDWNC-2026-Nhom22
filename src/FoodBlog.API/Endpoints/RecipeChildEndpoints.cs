@@ -17,7 +17,8 @@ public static class RecipeChildEndpoints
 {
     public static void MapRecipeChildEndpoints(this WebApplication app)
     {
-        var group = app.MapGroup("/api/v1/recipes/{id:guid}");
+        var group = app.MapGroup("/api/v1/recipes/{id:guid}")
+            .RequireRateLimiting("general");
 
         group.MapPost("/steps", async (Guid id, CreateStepRequest req, FoodBlogDbContext db) =>
         {

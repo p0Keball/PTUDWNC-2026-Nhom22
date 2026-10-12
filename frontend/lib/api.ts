@@ -1,73 +1,21 @@
-export interface RecipeSummary {
-  id: string;
-  title: string;
-  slug: string;
-  description: string;
-  primaryImageUrl: string | null;
-  prepTimeMinutes: number;
-  cookTimeMinutes: number;
-  servings: number;
-  difficulty: string;
-  publishedAt: string | null;
-}
+import type { RecipeDetail, RecipeListResponse, RecipeSummary } from "../types/recipe";
+import type {
+  Category,
+  CategoryDetail,
+  CategoryListResponse,
+} from "../types/category";
+import type { SearchParams, SearchResponse } from "../types/search";
 
-export interface RecipeListResponse {
-  items: RecipeSummary[];
-  totalCount: number;
-  page: number;
-  pageSize: number;
-}
-
-export interface RecipeDetail {
-  id: string;
-  title: string;
-  slug: string;
-  description: string;
-  instructions: string;
-  prepTimeMinutes: number;
-  cookTimeMinutes: number;
-  servings: number;
-  difficulty: string;
-  status: string;
-  categoryId: string;
-  authorId: string;
-  publishedAt: string | null;
-  rowVersion: string;
-  nutrition: {
-    calories: number | null;
-    protein: number | null;
-    carbohydrates: number | null;
-    fat: number | null;
-    fiber: number | null;
-    sodium: number | null;
-  } | null;
-  steps: {
-    id: string;
-    stepNumber: number;
-    title: string;
-    description: string;
-    timerMinutes: number | null;
-    imageUrl: string | null;
-  }[];
-  ingredients: {
-    id: string;
-    name: string;
-    quantity: number | null;
-    unit: string | null;
-    notes: string | null;
-    orderIndex: number;
-  }[];
-  images: {
-    id: string;
-    originalUrl: string;
-    mediumUrl: string | null;
-    thumbnailUrl: string | null;
-    altText: string | null;
-    isPrimary: boolean;
-    orderIndex: number;
-    thumbnailStatus: string;
-  }[];
-}
+export type {
+  RecipeDetail,
+  RecipeListResponse,
+  RecipeSummary,
+  Category,
+  CategoryDetail,
+  CategoryListResponse,
+  SearchParams,
+  SearchResponse,
+};
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5000";
@@ -91,5 +39,46 @@ export async function getRecipeBySlug(slug: string): Promise<RecipeDetail | null
   );
   if (res.status === 404) return null;
   if (!res.ok) throw new Error(`Failed to fetch recipe: ${res.status}`);
+  return res.json();
+}
+
+export async function getCategories(): Promise<CategoryListResponse> {
+  const res = await fetch(`${API_BASE}/api/v1/categories`, {
+    next: { revalidate: 3600 },
+  });
+  if (!res.ok) throw new Error(`Failed to fetch categories: ${res.status}`);
+  return res.json();
+}
+
+export async function getCategoryBySlug(
+  slug: string,
+  page = 1,
+  pageSize = 12
+): Promise<CategoryDetail | null> {
+  const res = await fetch(
+    `${API_BASE}/api/v1/categories/${encodeURIComponent(slug)}?page=${page}&pageSize=${pageSize}`,
+    { next: { revalidate: 600 } }
+  );
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`Failed to fetch category: ${res.status}`);
+  return res.json();
+}
+
+export async function searchRecipes(
+  params: SearchParams
+): Promise<SearchResponse> {
+  const query = new URLSearchParams();
+  query.set("q", params.q);
+  query.set("page", String(params.page ?? 1));
+  query.set("pageSize", String(params.pageSize ?? 12));
+  if (params.categoryId) query.set("categoryId", params.categoryId);
+  if (params.difficulty) query.set("difficulty", params.difficulty);
+  if (params.maxCookTime !== undefined)
+    query.set("maxCookTime", String(params.maxCookTime));
+  if (params.sort) query.set("sort", params.sort);
+  const res = await fetch(`${API_BASE}/api/v1/recipes/search?${query}`, {
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error(`Failed to search recipes: ${res.status}`);
   return res.json();
 }

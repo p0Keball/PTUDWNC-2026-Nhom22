@@ -53,6 +53,14 @@ dotnet run --project src/FoodBlog.API --urls "http://localhost:5000"
 ```
 
 - Health check: `curl http://localhost:5000/health` → `"Healthy"`
+- Liveness: `curl http://localhost:5000/health/live` → `{"status":"Healthy"}` (luôn 200)
+- Readiness: `curl http://localhost:5000/health/ready` → 200 + chi tiết từng service
+  (`postgres/redis/minio`); service nào down → 503 + nêu tên (đã test stop redis → 503 đúng)
+- CORS: preflight/request từ `http://localhost:3000` có `Access-Control-Allow-Origin`;
+  origin lạ không có header (config `Cors:Origins` trong appsettings)
+- Tài liệu API: Scalar UI `http://localhost:5000/scalar/` + OpenAPI JSON `/openapi/v1.json` (dev)
+- Rate limit: general 100 req/min (auth 10, upload 5 dự trữ); vượt → 429
+- Frontend types: `frontend/types/` (category/recipe/search/problem) dùng chung cho `lib/api.ts`
 - Tài khoản seed: admin `admin@foodblog.local` / `Foodblog123!` (+ 5 authors, pass giống nhau)
 - Connection string: `src/FoodBlog.API/appsettings.json` → `ConnectionStrings:Default`
 
@@ -104,17 +112,6 @@ curl -s "http://localhost:5000/api/v1/recipes/search?q=banh" | head -c 300
 - Middleware: `src/FoodBlog.API/Middleware/ExceptionHandlingMiddleware.cs`, đăng ký đầu pipeline.
 - Test: mọi case 404/409/422 phải trả `Content-Type: application/problem+json` kèm field `code`
   (`CATEGORY_NOT_FOUND`, `CATEGORY_NAME_EXISTS`, `VALIDATION_ERROR`...).
-
-## 4b. Đồng bộ main (sau 27/09) — MediatR + factory methods
-
-- Branch đã fast-forward lên `origin/main`: Application có MediatR 14 + FluentValidation 12
-  (`CreateRecipeCommand`, `GetRecipesQuery`, `GetRecipeBySlugQuery`, `ValidationBehavior`),
-  `IFoodBlogDbContext`, `MinioFileStorageService`, frontend có trang recipes + `lib/api.ts`.
-- Entities dùng factory `Create(...)` + private setters → endpoints con (steps/ingredients/images)
-  đã chuyển sang factory + methods `Update`/`SetStepNumber`/`SetPrimary` (thêm mới, không đổi behavior).
-- `GET /recipes` và `GET /recipes/{slug}` chạy qua MediatR handlers; search vẫn SQL trực tiếp.
-- Nợ bàn với nhóm: `RefreshToken` có dòng `public Guid Id` che `BaseEntity.Id` (warning CS0108) —
-  đề xuất xóa, dùng `Id` kế thừa. `IsRevoked` computed thì OK (không phải cột DB, đúng F-02).
 
 ## 5. Kiểm tra dữ liệu trong DB
 
