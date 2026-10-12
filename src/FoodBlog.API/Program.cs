@@ -1,3 +1,4 @@
+using System.Threading.RateLimiting;
 using FoodBlog.API.Endpoints;
 using FoodBlog.API.Middlewares;
 using FoodBlog.API.Services;
@@ -10,13 +11,48 @@ using FoodBlog.Infrastructure.Seed;
 using FoodBlog.Application.Features.Auth.Commands.GoogleLogin;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using Scalar.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddOpenApi();
-builder.Services.AddApplication();
 builder.Services.AddMemoryCache();
+builder.Services.AddApplication();
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("Frontend", policy =>
+    {
+        var origins = builder.Configuration.GetSection("Cors:Origins").Get<string[]>()
+            ?? ["http://localhost:3000"];
+        policy.WithOrigins(origins)
+            .AllowAnyHeader()
+            .AllowAnyMethod();
+    });
+});
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddFixedWindowLimiter("general", limiter =>
+    {
+        limiter.PermitLimit = 100;
+        limiter.Window = TimeSpan.FromMinutes(1);
+        limiter.QueueLimit = 0;
+    });
+    options.AddFixedWindowLimiter("auth", limiter =>
+    {
+        limiter.PermitLimit = 10;
+        limiter.Window = TimeSpan.FromMinutes(1);
+        limiter.QueueLimit = 0;
+    });
+    options.AddFixedWindowLimiter("upload", limiter =>
+    {
+        limiter.PermitLimit = 5;
+        limiter.Window = TimeSpan.FromMinutes(1);
+        limiter.QueueLimit = 0;
+    });
+});
 builder.Services.AddHttpClient<GoogleLoginCommandHandler>();
 builder.Services.AddFileStorage(builder.Configuration);
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
@@ -24,7 +60,7 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
     options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
     options.KnownNetworks.Clear();
     options.KnownProxies.Clear();
-    
+
 });
 builder.Services.AddDbContext<FoodBlogDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("Default")));
@@ -32,8 +68,8 @@ builder.Services.AddScoped<IFoodBlogDbContext>(sp => sp.GetRequiredService<FoodB
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
-builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
-    {
+builder.Services.AddAuthorization();
+builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>    {
         options.Password.RequiredLength = 8;
         options.Password.RequireDigit = true;
         options.Password.RequireUppercase = true;
@@ -55,6 +91,8 @@ builder.Services.Configure<PasswordHasherOptions>(options =>
 var app = builder.Build();
 
 app.UseForwardedHeaders();
+app.UseCors("Frontend");
+app.UseRateLimiter();
 app.UseMiddleware<GlobalExceptionMiddleware>();
 app.UseAuthentication();
 app.UseAuthorization();
@@ -69,6 +107,7 @@ using (var scope = app.Services.CreateScope())
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
+    app.MapScalarApiReference();
 }
 
 app.MapHealthEndpoints();

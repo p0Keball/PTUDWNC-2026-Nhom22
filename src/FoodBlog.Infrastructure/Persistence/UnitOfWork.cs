@@ -11,15 +11,15 @@ public class UnitOfWork : IUnitOfWork
     private IDbContextTransaction? _transaction;
 
     private IRecipeRepository? _recipes;
-    private IRepository<Category>? _categories;
+    private ICategoryRepository? _categories;
 
     public UnitOfWork(FoodBlogDbContext db) => _db = db;
 
     public IRecipeRepository Recipes
         => _recipes ??= new RecipeRepository(_db);
 
-    public IRepository<Category> Categories
-        => _categories ??= new Repository<Category>(_db);
+    public ICategoryRepository Categories
+        => _categories ??= new CategoryRepository(_db);
 
     public Task<int> SaveChangesAsync(CancellationToken ct = default)
         => _db.SaveChangesAsync(ct);
