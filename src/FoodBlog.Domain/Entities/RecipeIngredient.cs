@@ -39,4 +39,9 @@ public class RecipeIngredient : BaseEntity
         Unit = unit;
         Notes = notes;
     }
+
+    public void SetOrder(int orderIndex)
+    {
+        OrderIndex = orderIndex;
+    }
 }

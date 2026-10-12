@@ -10,43 +10,101 @@ public static class HealthEndpoints
 
     public static void MapHealthEndpoints(this WebApplication app)
     {
-        app.MapGet("/health/live", () => Results.Ok(new { status = "Healthy" }))
-            .WithName("HealthLive");
+        app.MapGet("/health/live", () =>
+            Results.Ok(new HealthResponse(
+                "Healthy",
+                "live",
+                DateTimeOffset.UtcNow,
+                new Dictionary<string, HealthCheckResult>())))
+            .WithName("LiveHealthCheck")
+            .WithTags("Health");
 
-        app.MapGet("/health/ready", async (FoodBlogDbContext db, IConfiguration config) =>
-        {
-            var checks = new Dictionary<string, string>();
-            var healthy = true;
+        app.MapGet("/health/ready", CheckReadinessAsync)
+            .WithName("ReadyHealthCheck")
+            .WithTags("Health");
 
-            try
-            {
-                healthy &= await CheckAsync("postgres", () => db.Database.CanConnectAsync(), checks);
-                healthy &= await CheckAsync("redis", () => CheckRedisAsync(config), checks);
-                healthy &= await CheckAsync("minio", () => CheckMinioAsync(config), checks);
-            }
-            catch (Exception ex)
-            {
-                checks["error"] = ex.Message;
-                healthy = false;
-            }
-
-            var payload = new { status = healthy ? "Healthy" : "Unhealthy", checks };
-            return healthy ? Results.Ok(payload) : Results.Json(payload, statusCode: 503);
-        }).WithName("HealthReady");
+        app.MapGet("/health", CheckHealthAsync)
+            .WithName("HealthCheck")
+            .WithTags("Health");
     }
 
-    private static async Task<bool> CheckAsync(string name, Func<Task<bool>> check, Dictionary<string, string> checks)
+    private static Task<IResult> CheckHealthAsync(
+        FoodBlogDbContext db,
+        IConfiguration config,
+        ILoggerFactory loggerFactory,
+        CancellationToken cancellationToken)
+        => CheckReadinessAsync(db, config, loggerFactory, cancellationToken);
+
+    private static async Task<IResult> CheckReadinessAsync(
+        FoodBlogDbContext db,
+        IConfiguration config,
+        ILoggerFactory loggerFactory,
+        CancellationToken cancellationToken)
+    {
+        var logger = loggerFactory.CreateLogger("HealthEndpoints");
+        var checks = new Dictionary<string, HealthCheckResult>();
+        var startedAt = DateTimeOffset.UtcNow;
+
+        try
+        {
+            var databaseIsAvailable = await db.Database.CanConnectAsync(cancellationToken);
+            checks["database"] = databaseIsAvailable
+                ? new HealthCheckResult("Healthy")
+                : new HealthCheckResult("Unhealthy", "Database is unavailable.");
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            logger.LogWarning(exception, "Database readiness check failed.");
+            checks["database"] = new HealthCheckResult("Unhealthy", "Database check failed.");
+        }
+
+        checks["postgres"] = checks["database"] switch
+        {
+            { Status: "Healthy" } => new HealthCheckResult("Healthy"),
+            var d => new HealthCheckResult("Unhealthy", d.Detail)
+        };
+
+        await CheckAsync("redis", () => CheckRedisAsync(config), checks, logger, cancellationToken);
+        await CheckAsync("minio", () => CheckMinioAsync(config), checks, logger, cancellationToken);
+
+        var isHealthy = checks.Values.All(check => check.Status == "Healthy");
+        var response = new HealthResponse(
+            isHealthy ? "Healthy" : "Unhealthy",
+            "ready",
+            startedAt,
+            checks);
+
+        return isHealthy
+            ? Results.Ok(response)
+            : Results.Json(response, statusCode: StatusCodes.Status503ServiceUnavailable);
+    }
+
+    private static async Task CheckAsync(
+        string name,
+        Func<Task<bool>> check,
+        Dictionary<string, HealthCheckResult> checks,
+        ILogger logger,
+        CancellationToken cancellationToken)
     {
         try
         {
             var ok = await check();
-            checks[name] = ok ? "Healthy" : "Unhealthy";
-            return ok;
+            checks[name] = ok
+                ? new HealthCheckResult("Healthy")
+                : new HealthCheckResult("Unhealthy", $"{name} is unavailable.");
         }
-        catch (Exception ex)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            checks[name] = $"Unhealthy: {ex.Message}";
-            return false;
+            throw;
+        }
+        catch (Exception exception)
+        {
+            logger.LogWarning(exception, "{Service} readiness check failed.", name);
+            checks[name] = new HealthCheckResult("Unhealthy", $"{name} check failed.");
         }
     }
 
@@ -60,7 +118,10 @@ public static class HealthEndpoints
 
     private static async Task<bool> CheckMinioAsync(IConfiguration config)
     {
-        var endpoint = (config["Minio:Endpoint"] ?? "http://localhost:9000").TrimEnd('/');
+        var endpoint = (config["MinIO:Endpoint"] ?? "http://localhost:9000").TrimEnd('/');
+        if (!endpoint.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
+            && !endpoint.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            endpoint = $"http://{endpoint}";
         using var response = await Http.GetAsync($"{endpoint}/minio/health/live");
         return response.IsSuccessStatusCode;
     }
@@ -72,4 +133,14 @@ public static class HealthEndpoints
             ? (parts[0], port)
             : ("localhost", 6379);
     }
+
+    private sealed record HealthResponse(
+        string Status,
+        string Role,
+        DateTimeOffset CheckedAt,
+        IReadOnlyDictionary<string, HealthCheckResult> Checks);
+
+    private sealed record HealthCheckResult(
+        string Status,
+        string? Detail = null);
 }

@@ -1,4 +1,4 @@
-using FoodBlog.Application.Common.Interfaces;
+using FoodBlog.Application.Contracts.Persistence;
 using FoodBlog.Domain.Common;
 using FoodBlog.Domain.Entities;
 using FoodBlog.Domain.Enums;
@@ -45,7 +45,7 @@ public static class CategoryEndpoints
             pageSize = Math.Clamp(pageSize, 1, 50);
 
             var category = await uow.Categories.GetBySlugAsync(slug)
-                ?? throw new NotFoundException("CATEGORY_NOT_FOUND", "Category not found");
+                ?? throw new NotFoundException("Category not found", "CATEGORY_NOT_FOUND");
 
             var (recipes, total) = await uow.Categories.GetPublishedRecipesAsync(category.Id, page, pageSize);
             var items = recipes
@@ -68,7 +68,7 @@ public static class CategoryEndpoints
             ThrowIfInvalidName(req.Name);
 
             if (await uow.Categories.ExistsByNameAsync(req.Name.Trim()))
-                throw new ConflictException("CATEGORY_NAME_EXISTS", "Tên danh mục đã tồn tại.");
+                throw new ConflictException("Tên danh mục đã tồn tại.", "CATEGORY_NAME_EXISTS");
 
             var slug = await UniqueSlugAsync(uow, SlugHelper.Generate(req.Name));
             var category = new Category
@@ -90,13 +90,12 @@ public static class CategoryEndpoints
         group.MapPut("/{id:guid}", async (Guid id, UpdateCategoryRequest req, IUnitOfWork uow, IMemoryCache cache) =>
         {
             var category = await uow.Categories.GetByIdAsync(id)
-                ?? throw new NotFoundException("CATEGORY_NOT_FOUND", "Category not found");
+                ?? throw new NotFoundException("Category not found", "CATEGORY_NOT_FOUND");
 
             ThrowIfInvalidName(req.Name);
 
             if (await uow.Categories.ExistsByNameAsync(req.Name.Trim(), id))
-                throw new Domain.Exceptions.ValidationException(
-                    "Validation failed",
+                throw new ValidationException(
                     new Dictionary<string, string[]> { ["name"] = ["Tên danh mục đã tồn tại."] });
 
             category.Name = req.Name.Trim();
@@ -113,12 +112,13 @@ public static class CategoryEndpoints
         group.MapDelete("/{id:guid}", async (Guid id, IUnitOfWork uow, IMemoryCache cache) =>
         {
             var category = await uow.Categories.GetByIdAsync(id)
-                ?? throw new NotFoundException("CATEGORY_NOT_FOUND", "Category not found");
+                ?? throw new NotFoundException("Category not found", "CATEGORY_NOT_FOUND");
 
             var recipeCount = await uow.Categories.CountAllRecipesAsync(id);
             if (recipeCount > 0)
-                throw new ConflictException("CATEGORY_DELETE_HAS_RECIPES",
-                    $"Danh mục còn chứa {recipeCount} công thức.");
+                throw new ConflictException(
+                    $"Danh mục còn chứa {recipeCount} công thức.",
+                    "CATEGORY_DELETE_HAS_RECIPES");
 
             uow.Categories.Remove(category);
             await uow.SaveChangesAsync();
@@ -130,8 +130,7 @@ public static class CategoryEndpoints
     private static void ThrowIfInvalidName(string? name)
     {
         if (string.IsNullOrWhiteSpace(name) || name.Trim().Length is < 2 or > 50)
-            throw new Domain.Exceptions.ValidationException(
-                "Validation failed",
+            throw new ValidationException(
                 new Dictionary<string, string[]> { ["name"] = ["Tên danh mục phải từ 2 đến 50 ký tự."] });
     }
 

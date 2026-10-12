@@ -40,7 +40,7 @@ public class RecipeStep : BaseEntity
         ImageUrl = imageUrl;
     }
 
-    public void SetStepNumber(int stepNumber)
+    public void Renumber(int stepNumber)
     {
         StepNumber = stepNumber;
     }

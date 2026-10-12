@@ -1,7 +1,12 @@
 namespace FoodBlog.Domain.Exceptions;
 
-public abstract class DomainException(string code, string message, int statusCode) : Exception(message)
+public abstract class DomainException : Exception
 {
-    public string Code { get; } = code;
-    public int StatusCode { get; } = statusCode;
+    protected DomainException(string message, string? errorCode = null)
+        : base(message)
+    {
+        ErrorCode = errorCode;
+    }
+
+    public string? ErrorCode { get; }
 }

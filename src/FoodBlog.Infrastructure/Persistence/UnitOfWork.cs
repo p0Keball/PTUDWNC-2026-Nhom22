@@ -1,12 +1,54 @@
-using FoodBlog.Application.Common.Interfaces;
+using FoodBlog.Application.Contracts.Persistence;
+using FoodBlog.Domain.Entities;
 using FoodBlog.Infrastructure.Persistence.Repositories;
+using Microsoft.EntityFrameworkCore.Storage;
 
 namespace FoodBlog.Infrastructure.Persistence;
 
-public class UnitOfWork(FoodBlogDbContext db) : IUnitOfWork
+public class UnitOfWork : IUnitOfWork
 {
-    public ICategoryRepository Categories { get; } = new CategoryRepository(db);
+    private readonly FoodBlogDbContext _db;
+    private IDbContextTransaction? _transaction;
 
-    public Task<int> SaveChangesAsync(CancellationToken cancellationToken = default) =>
-        db.SaveChangesAsync(cancellationToken);
+    private IRecipeRepository? _recipes;
+    private ICategoryRepository? _categories;
+
+    public UnitOfWork(FoodBlogDbContext db) => _db = db;
+
+    public IRecipeRepository Recipes
+        => _recipes ??= new RecipeRepository(_db);
+
+    public ICategoryRepository Categories
+        => _categories ??= new CategoryRepository(_db);
+
+    public Task<int> SaveChangesAsync(CancellationToken ct = default)
+        => _db.SaveChangesAsync(ct);
+
+    public async Task BeginTransactionAsync(CancellationToken ct = default)
+        => _transaction = await _db.Database.BeginTransactionAsync(ct);
+
+    public async Task CommitTransactionAsync(CancellationToken ct = default)
+    {
+        if (_transaction is not null)
+        {
+            await _transaction.CommitAsync(ct);
+            _transaction = null;
+        }
+    }
+
+    public async Task RollbackTransactionAsync(CancellationToken ct = default)
+    {
+        if (_transaction is not null)
+        {
+            await _transaction.RollbackAsync(ct);
+            _transaction = null;
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_transaction is not null)
+            await _transaction.DisposeAsync();
+        await _db.DisposeAsync();
+    }
 }
