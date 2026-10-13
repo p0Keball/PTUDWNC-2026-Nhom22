@@ -26,6 +26,7 @@ public static class RecipeEndpoints
     public static void MapRecipeEndpoints(this WebApplication app)
     {
         var group = app.MapGroup("/api/v1/recipes")
+            .WithTags("Recipes")
             .RequireRateLimiting("general");
 
         group.MapGet("/", async (ISender sender,
@@ -111,7 +112,7 @@ public static class RecipeEndpoints
             {
                 return Results.UnprocessableEntity(new { title = "Validation failed", errors = ToErrors(ex) });
             }
-        });
+        }).RequireRateLimiting("recipe-write");
 
         group.MapPut("/{id:guid}", async (Guid id, UpdateRecipeRequest req, ISender sender, IOutputCacheStore store, CancellationToken ct) =>
         {
@@ -121,35 +122,35 @@ public static class RecipeEndpoints
                 req.Nutrition), ct);
             await store.EvictByTagAsync("recipes", ct);
             return Results.Ok(result);
-        });
+        }).RequireRateLimiting("recipe-write");
 
         group.MapPatch("/{id:guid}/publish", async (Guid id, ISender sender, IOutputCacheStore store, CancellationToken ct) =>
         {
             var result = await sender.Send(new PublishRecipeCommand(id), ct);
             await store.EvictByTagAsync("recipes", ct);
             return Results.Ok(result);
-        });
+        }).RequireRateLimiting("recipe-write");
 
         group.MapPatch("/{id:guid}/unpublish", async (Guid id, ISender sender, IOutputCacheStore store, CancellationToken ct) =>
         {
             var result = await sender.Send(new UnpublishRecipeCommand(id), ct);
             await store.EvictByTagAsync("recipes", ct);
             return Results.Ok(result);
-        });
+        }).RequireRateLimiting("recipe-write");
 
         group.MapPatch("/{id:guid}/archive", async (Guid id, ISender sender, IOutputCacheStore store, CancellationToken ct) =>
         {
             var result = await sender.Send(new ArchiveRecipeCommand(id), ct);
             await store.EvictByTagAsync("recipes", ct);
             return Results.Ok(result);
-        });
+        }).RequireRateLimiting("recipe-write");
 
         group.MapDelete("/{id:guid}", async (Guid id, ISender sender, IOutputCacheStore store, CancellationToken ct) =>
         {
             await sender.Send(new DeleteRecipeCommand(id), ct);
             await store.EvictByTagAsync("recipes", ct);
             return Results.NoContent();
-        });
+        }).RequireRateLimiting("recipe-write");
     }
 
     public static void EvictListCache()
