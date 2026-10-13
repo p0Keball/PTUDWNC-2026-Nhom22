@@ -21,11 +21,19 @@ export default async function Home({
 
   return (
     <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 p-4 sm:p-6">
-      <div className="flex flex-col gap-1">
-        <h1 className="text-2xl font-bold sm:text-3xl">Công thức mới nhất</h1>
-        <p className="text-sm text-zinc-500">
-          {data.totalCount} công thức đã xuất bản
-        </p>
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex flex-col gap-1">
+          <h1 className="text-2xl font-bold sm:text-3xl">Công thức mới nhất</h1>
+          <p className="text-sm text-zinc-500">
+            {data.totalCount} công thức đã xuất bản
+          </p>
+        </div>
+        <Link
+          href="/recipes/create"
+          className="shrink-0 rounded-full bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white"
+        >
+          Tạo công thức
+        </Link>
       </div>
 
       {data.items.length === 0 ? (

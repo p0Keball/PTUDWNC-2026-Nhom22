@@ -64,15 +64,15 @@ public static class FoodBlogSeeder
         var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
         var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
 
+        foreach (var role in new[] { "Admin", "Author" })
+            if (!await roleManager.RoleExistsAsync(role))
+                await roleManager.CreateAsync(new IdentityRole(role));
+
         if (db.Categories.Any())
             return;
 
         Randomizer.Seed = new Random(20260922);
         var usedSlugs = new HashSet<string>();
-
-        foreach (var role in new[] { "Admin", "Author" })
-            if (!await roleManager.RoleExistsAsync(role))
-                await roleManager.CreateAsync(new IdentityRole(role));
 
         var admin = new ApplicationUser
         {

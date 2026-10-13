@@ -32,7 +32,11 @@ public static class DependencyInjection
             .AddEntityFrameworkStores<FoodBlogDbContext>();
 
         // NFR-SEC-001: PBKDF2 >= 100.000 vòng lặp
-        services.Configure<PasswordHasherOptions>(o => o.IterationCount = 100_000);
+        services.Configure<PasswordHasherOptions>(o =>
+        {
+            o.CompatibilityMode = PasswordHasherCompatibilityMode.IdentityV3;
+            o.IterationCount = 100_000;
+        });
 
         services.AddSingleton(TimeProvider.System);
         services.AddFileStorage(config);

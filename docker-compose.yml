@@ -13,7 +13,7 @@ services:
       - pgdata:/var/lib/postgresql/data
 
   minio:
-    image: quay.io/minio/minio:latest
+    image: quay.io/minio/aistor/minio:latest
     container_name: foodblog-minio
     restart: unless-stopped
     command: server /data --console-address ":9001"
