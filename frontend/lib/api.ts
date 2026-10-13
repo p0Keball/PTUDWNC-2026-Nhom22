@@ -98,13 +98,15 @@ export interface UpdateRecipeInput extends CreateRecipeInput {
 export class ApiError extends Error {
   status: number;
   code?: string;
+  detail?: string | null;
   errors?: Record<string, string[]>;
 
-  constructor(status: number, message: string, code?: string, errors?: Record<string, string[]>) {
+  constructor(status: number, message: string, code?: string, errors?: Record<string, string[]>, detail?: string | null) {
     super(message);
     this.status = status;
     this.code = code;
     this.errors = errors;
+    this.detail = detail;
   }
 }
 
@@ -117,16 +119,18 @@ function authHeaders(token?: string): Record<string, string> {
 async function throwApiError(res: Response, fallback: string): Promise<never> {
   let code: string | undefined;
   let errors: Record<string, string[]> | undefined;
+  let detail: string | null | undefined;
   let title = fallback;
   try {
     const data = await res.json();
     if (typeof data?.title === "string") title = data.title;
     if (typeof data?.code === "string") code = data.code;
+    if (typeof data?.detail === "string") detail = data.detail;
     if (data?.errors && typeof data.errors === "object") errors = data.errors;
   } catch {
     // giu fallback khi body khong phai JSON
   }
-  throw new ApiError(res.status, title, code, errors);
+  throw new ApiError(res.status, title, code, errors, detail);
 }
 
 const API_BASE =
