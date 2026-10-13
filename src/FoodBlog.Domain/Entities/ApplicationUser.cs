@@ -12,4 +12,13 @@ public class ApplicationUser : IdentityUser
 
     public ICollection<Recipe> Recipes { get; set; } = new List<Recipe>();
     public ICollection<RefreshToken> RefreshTokens { get; set; } = new List<RefreshToken>();
+
+     public static ApplicationUser Create(string fullName, string email, string userName) => new()
+    {
+        DisplayName = fullName.Trim(),
+        Email = email.Trim(),
+        UserName = userName.Trim(),
+        IsActive = true,
+        CreatedAt = DateTime.UtcNow
+    };
 }

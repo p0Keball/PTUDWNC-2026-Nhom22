@@ -47,7 +47,7 @@ public static class RecipeChildEndpoints
             await db.SaveChangesAsync(ct);
             EvictListCache();
             return Results.Created($"/api/v1/recipes/{id}/steps/{step.Id}",
-                new StepDto(step.Id, step.StepNumber, step.Title, step.Description, step.TimerMinutes, step.ImageUrl));
+                new RecipeStepDto(step.Id, step.StepNumber, step.Title, step.Description, step.TimerMinutes, step.ImageUrl));
         });
 
         group.MapPut("/steps/{stepId:guid}", async (Guid id, Guid stepId, UpdateStepRequest req,
@@ -63,7 +63,7 @@ public static class RecipeChildEndpoints
                 req.TimerMinutes, string.IsNullOrWhiteSpace(req.ImageUrl) ? null : req.ImageUrl.Trim());
             await db.SaveChangesAsync(ct);
             EvictListCache();
-            return Results.Ok(new StepDto(step.Id, step.StepNumber, step.Title, step.Description, step.TimerMinutes, step.ImageUrl));
+            return Results.Ok(new RecipeStepDto(step.Id, step.StepNumber, step.Title, step.Description, step.TimerMinutes, step.ImageUrl));
         });
 
         group.MapDelete("/steps/{stepId:guid}", async (Guid id, Guid stepId, FoodBlogDbContext db,
@@ -125,7 +125,7 @@ public static class RecipeChildEndpoints
             await db.SaveChangesAsync(ct);
             EvictListCache();
             return Results.Created($"/api/v1/recipes/{id}/ingredients/{ingredient.Id}",
-                new IngredientDto(ingredient.Id, ingredient.Name, ingredient.Quantity, ingredient.Unit, ingredient.Notes, ingredient.OrderIndex));
+                new RecipeIngredientDto(ingredient.Id, ingredient.Name, ingredient.Quantity, ingredient.Unit, ingredient.Notes, ingredient.OrderIndex));
         });
 
         group.MapPut("/ingredients/{ingId:guid}", async (Guid id, Guid ingId, UpdateIngredientRequest req,
@@ -142,7 +142,7 @@ public static class RecipeChildEndpoints
                 string.IsNullOrWhiteSpace(req.Notes) ? null : req.Notes.Trim());
             await db.SaveChangesAsync(ct);
             EvictListCache();
-            return Results.Ok(new IngredientDto(ingredient.Id, ingredient.Name, ingredient.Quantity, ingredient.Unit, ingredient.Notes, ingredient.OrderIndex));
+            return Results.Ok(new RecipeIngredientDto(ingredient.Id, ingredient.Name, ingredient.Quantity, ingredient.Unit, ingredient.Notes, ingredient.OrderIndex));
         });
 
         group.MapDelete("/ingredients/{ingId:guid}", async (Guid id, Guid ingId, FoodBlogDbContext db,

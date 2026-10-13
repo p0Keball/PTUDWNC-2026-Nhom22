@@ -1,3 +1,4 @@
+using FoodBlog.Application.Common.Interfaces;
 using FoodBlog.Domain.Common;
 using FoodBlog.Domain.Entities;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
@@ -5,7 +6,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace FoodBlog.Infrastructure.Persistence;
 
-public class FoodBlogDbContext : IdentityDbContext<ApplicationUser>
+public class FoodBlogDbContext : IdentityDbContext<ApplicationUser>, IFoodBlogDbContext
 {
     public FoodBlogDbContext(DbContextOptions<FoodBlogDbContext> options)
         : base(options)

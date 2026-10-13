@@ -1,7 +1,11 @@
+using FoodBlog.Application.Features.Recipes;
+using FoodBlog.Application.Features.Recipes.Commands;
+using FoodBlog.Application.Features.Recipes.Queries;
 using FoodBlog.Domain.Common;
 using FoodBlog.Domain.Entities;
 using FoodBlog.Domain.Enums;
 using FoodBlog.Infrastructure.Persistence;
+using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Primitives;
@@ -9,18 +13,6 @@ using NpgsqlTypes;
 
 namespace FoodBlog.API.Endpoints;
 
-public record NutritionDto(decimal? Calories, decimal? Protein, decimal? Carbohydrates,
-    decimal? Fat, decimal? Fiber, decimal? Sodium);
-public record StepDto(Guid Id, int StepNumber, string Title, string Description, int? TimerMinutes, string? ImageUrl);
-public record IngredientDto(Guid Id, string Name, decimal? Quantity, string? Unit, string? Notes, int OrderIndex);
-public record ImageDto(Guid Id, string OriginalUrl, string? MediumUrl, string? ThumbnailUrl,
-    string? AltText, bool IsPrimary, int OrderIndex, string ThumbnailStatus);
-public record RecipeDetailDto(Guid Id, string Title, string Slug, string Description, string Instructions,
-    int PrepTimeMinutes, int CookTimeMinutes, int Servings, string Difficulty, string Status,
-    Guid CategoryId, string AuthorId, DateTime? PublishedAt, string RowVersion,
-    NutritionDto? Nutrition, List<StepDto> Steps, List<IngredientDto> Ingredients, List<ImageDto> Images);
-public record CreateRecipeRequest(string Title, string Description, string Instructions, Guid CategoryId,
-    int PrepTimeMinutes, int CookTimeMinutes, int Servings, int Difficulty);
 public record UpdateRecipeRequest(string Title, string Description, string Instructions, Guid CategoryId,
     int PrepTimeMinutes, int CookTimeMinutes, int Servings, int Difficulty, string RowVersion);
 
@@ -32,7 +24,7 @@ public static class RecipeEndpoints
     {
         var group = app.MapGroup("/api/v1/recipes");
 
-        group.MapGet("/", async (FoodBlogDbContext db, IMemoryCache cache,
+        group.MapGet("/", async (ISender sender, IMemoryCache cache,
             int page = 1, int pageSize = 12, Guid? categoryId = null,
             int? difficulty = null, int? maxCookTime = null, string sort = "-createdAt") =>
         {
@@ -43,32 +35,12 @@ public static class RecipeEndpoints
             if (cache.TryGetValue(key, out object? cached) && cached is not null)
                 return Results.Ok(cached);
 
-            var query = db.Recipes.Where(r => r.Status == RecipeStatus.Published);
-            if (categoryId.HasValue) query = query.Where(r => r.CategoryId == categoryId);
-            if (difficulty.HasValue) query = query.Where(r => r.Difficulty == (Difficulty)difficulty);
-            if (maxCookTime.HasValue) query = query.Where(r => r.CookTimeMinutes <= maxCookTime);
-            query = sort switch
-            {
-                "createdAt" => query.OrderBy(r => r.CreatedAt),
-                "title" => query.OrderBy(r => r.Title),
-                "-title" => query.OrderByDescending(r => r.Title),
-                _ => query.OrderByDescending(r => r.CreatedAt)
-            };
-
-            var total = await query.CountAsync();
-            var items = await query
-                .Skip((page - 1) * pageSize).Take(pageSize)
-                .Select(r => new RecipeSummaryDto(r.Id, r.Title, r.Slug, r.Description,
-                    r.Images.Where(i => i.IsPrimary).Select(i => i.OriginalUrl).FirstOrDefault(),
-                    r.PrepTimeMinutes, r.CookTimeMinutes, r.Servings,
-                    r.Difficulty.ToString(), r.PublishedAt))
-                .ToListAsync();
-
-            var result = new { items, totalCount = total, page, pageSize };
-            cache.Set(key, result, new MemoryCacheEntryOptions()
+            var result = await sender.Send(new GetRecipesQuery(page, pageSize, categoryId, difficulty, maxCookTime, sort));
+            var shaped = new { items = result.Items, totalCount = result.TotalCount, page = result.Page, pageSize = result.PageSize };
+            cache.Set(key, shaped, new MemoryCacheEntryOptions()
                 .SetAbsoluteExpiration(TimeSpan.FromMinutes(15))
                 .AddExpirationToken(new CancellationChangeToken(_listCacheCts.Token)));
-            return Results.Ok(result);
+            return Results.Ok(shaped);
         });
 
         group.MapGet("/search", async (FoodBlogDbContext db, string? q, int page = 1, int pageSize = 12) =>
@@ -96,44 +68,36 @@ public static class RecipeEndpoints
             return Results.Ok(new { items, totalCount = total, page, pageSize });
         });
 
-        group.MapGet("/{slug}", async (string slug, FoodBlogDbContext db) =>
+        group.MapGet("/{slug}", async (string slug, ISender sender) =>
         {
-            var recipe = await db.Recipes
-                .Include(r => r.Steps).Include(r => r.Ingredients).Include(r => r.Images)
-                .FirstOrDefaultAsync(r => r.Slug == slug);
+            RecipeDetailDto? recipe;
+            try
+            {
+                recipe = await sender.Send(new GetRecipeBySlugQuery(slug));
+            }
+            catch (FluentValidation.ValidationException ex)
+            {
+                return Results.UnprocessableEntity(new { title = "Validation failed", errors = ToErrors(ex) });
+            }
             if (recipe is null)
                 return Results.NotFound(new { code = "RECIPE_NOT_FOUND", title = "Không tìm thấy công thức.", slug });
-            if (recipe.Status != RecipeStatus.Published)
+            if (recipe.Status != RecipeStatus.Published.ToString())
                 return Results.Json(new { code = "RECIPE_FORBIDDEN", title = "Bạn không có quyền xem công thức này." }, statusCode: 403);
-            return Results.Ok(ToDetail(recipe));
+            return Results.Ok(recipe);
         });
 
-        group.MapPost("/", async (CreateRecipeRequest req, FoodBlogDbContext db) =>
+        group.MapPost("/", async (CreateRecipeCommand req, ISender sender) =>
         {
-            var errors = ValidateRecipe(req.Title, req.CategoryId, req.PrepTimeMinutes, req.CookTimeMinutes, req.Servings, req.Difficulty);
-            if (errors.Count > 0)
-                return Results.UnprocessableEntity(new { title = "Validation failed", errors });
-            if (!await db.Categories.AnyAsync(c => c.Id == req.CategoryId))
-                return Results.UnprocessableEntity(new { title = "Validation failed", errors = new { categoryId = new[] { "Danh mục không tồn tại." } } });
-
-            var recipe = new Recipe
+            try
             {
-                Title = req.Title.Trim(),
-                Slug = await UniqueSlugAsync(db, SlugHelper.Generate(req.Title)),
-                Description = req.Description,
-                Instructions = req.Instructions,
-                CategoryId = req.CategoryId,
-                PrepTimeMinutes = req.PrepTimeMinutes,
-                CookTimeMinutes = req.CookTimeMinutes,
-                Servings = req.Servings,
-                Difficulty = (Difficulty)req.Difficulty,
-                Status = RecipeStatus.Draft,
-                AuthorId = (await db.Users.Select(u => u.Id).FirstOrDefaultAsync()) ?? string.Empty
-            };
-            db.Recipes.Add(recipe);
-            await db.SaveChangesAsync();
-            EvictListCache();
-            return Results.Created($"/api/v1/recipes/{Uri.EscapeDataString(recipe.Slug)}", ToDetail(recipe));
+                var recipe = await sender.Send(req);
+                EvictListCache();
+                return Results.Created($"/api/v1/recipes/{Uri.EscapeDataString(recipe.Slug)}", recipe);
+            }
+            catch (FluentValidation.ValidationException ex)
+            {
+                return Results.UnprocessableEntity(new { title = "Validation failed", errors = ToErrors(ex) });
+            }
         });
 
         group.MapPut("/{id:guid}", async (Guid id, UpdateRecipeRequest req, FoodBlogDbContext db) =>
@@ -166,7 +130,7 @@ public static class RecipeEndpoints
             recipe.Difficulty = (Difficulty)req.Difficulty;
             await db.SaveChangesAsync();
             EvictListCache();
-            return Results.Ok(ToDetail(recipe));
+            return Results.Ok(RecipeMapper.ToDetail(recipe));
         });
 
         group.MapPatch("/{id:guid}/publish", async (Guid id, FoodBlogDbContext db) =>
@@ -224,6 +188,13 @@ public static class RecipeEndpoints
         old.Dispose();
     }
 
+    private static Dictionary<string, string[]> ToErrors(FluentValidation.ValidationException ex) =>
+        ex.Errors.GroupBy(f => ToCamelCase(f.PropertyName))
+            .ToDictionary(g => g.Key, g => g.Select(f => f.ErrorMessage).ToArray());
+
+    private static string ToCamelCase(string s) =>
+        string.IsNullOrEmpty(s) ? s : char.ToLowerInvariant(s[0]) + s.Substring(1);
+
     private static Dictionary<string, string[]> ValidateRecipe(string? title, Guid categoryId,
         int prep, int cook, int servings, int difficulty)
     {
@@ -238,30 +209,4 @@ public static class RecipeEndpoints
         if (difficulty is < 1 or > 4) errors["difficulty"] = ["Độ khó phải từ 1 đến 4."];
         return errors;
     }
-
-    private static async Task<string> UniqueSlugAsync(FoodBlogDbContext db, string baseSlug)
-    {
-        var slug = string.IsNullOrWhiteSpace(baseSlug) ? Guid.NewGuid().ToString("N")[..8] : baseSlug;
-        var candidate = slug;
-        var counter = 2;
-        while (await db.Recipes.AnyAsync(r => r.Slug == candidate))
-            candidate = $"{slug}-{counter++}";
-        return candidate;
-    }
-
-    public static RecipeDetailDto ToDetail(Recipe r) => new(
-        r.Id, r.Title, r.Slug, r.Description, r.Instructions,
-        r.PrepTimeMinutes, r.CookTimeMinutes, r.Servings,
-        r.Difficulty.ToString(), r.Status.ToString(),
-        r.CategoryId, r.AuthorId, r.PublishedAt,
-        Convert.ToBase64String(r.RowVersion ?? []),
-        r.Nutrition is null ? null : new NutritionDto(r.Nutrition.Calories, r.Nutrition.Protein,
-            r.Nutrition.Carbohydrates, r.Nutrition.Fat, r.Nutrition.Fiber, r.Nutrition.Sodium),
-        r.Steps.OrderBy(s => s.StepNumber)
-            .Select(s => new StepDto(s.Id, s.StepNumber, s.Title, s.Description, s.TimerMinutes, s.ImageUrl)).ToList(),
-        r.Ingredients.OrderBy(i => i.OrderIndex)
-            .Select(i => new IngredientDto(i.Id, i.Name, i.Quantity, i.Unit, i.Notes, i.OrderIndex)).ToList(),
-        r.Images.OrderBy(i => i.OrderIndex)
-            .Select(i => new ImageDto(i.Id, i.OriginalUrl, i.MediumUrl, i.ThumbnailUrl, i.AltText, i.IsPrimary, i.OrderIndex,
-                i.ThumbnailUrl is null && i.MediumUrl is null ? "pending" : "ready")).ToList());
 }
