@@ -6,6 +6,7 @@ using FoodBlog.Domain.Entities;
 using FoodBlog.Domain.Enums;
 using FoodBlog.Domain.Exceptions;
 using FoodBlog.Infrastructure.Persistence;
+using Microsoft.AspNetCore.OutputCaching;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
@@ -27,24 +28,16 @@ public static class RecipeEndpoints
         var group = app.MapGroup("/api/v1/recipes")
             .RequireRateLimiting("general");
 
-        group.MapGet("/", async (ISender sender, IMemoryCache cache,
+        group.MapGet("/", async (ISender sender,
             int page = 1, int pageSize = 12, Guid? categoryId = null,
             int? difficulty = null, int? maxCookTime = null, string sort = "-createdAt") =>
         {
             page = Math.Max(page, 1);
             pageSize = Math.Clamp(pageSize, 1, 50);
-            var key = $"recipes:list:{page}:{pageSize}:{categoryId}:{difficulty}:{maxCookTime}:{sort}";
-
-            if (cache.TryGetValue(key, out object? cached) && cached is not null)
-                return Results.Ok(cached);
 
             var result = await sender.Send(new GetRecipesQuery(page, pageSize, categoryId, difficulty, maxCookTime, sort));
-            var shaped = new { items = result.Items, totalCount = result.TotalCount, page = result.Page, pageSize = result.PageSize };
-            cache.Set(key, shaped, new MemoryCacheEntryOptions()
-                .SetAbsoluteExpiration(TimeSpan.FromMinutes(15))
-                .AddExpirationToken(new CancellationChangeToken(_listCacheCts.Token)));
-            return Results.Ok(shaped);
-        });
+            return Results.Ok(new { items = result.Items, totalCount = result.TotalCount, page = result.Page, pageSize = result.PageSize });
+        }).CacheOutput("RecipeList");
 
         group.MapGet("/search", async (FoodBlogDbContext db, string? q, int page = 1, int pageSize = 12) =>
         {
@@ -62,13 +55,30 @@ public static class RecipeEndpoints
             var items = await baseQuery
                 .OrderByDescending(r => r.PublishedAt)
                 .Skip((page - 1) * pageSize).Take(pageSize)
-                .Select(r => new RecipeSummaryDto(r.Id, r.Title, r.Slug, r.Description,
+                .Select(r => new FoodBlog.Application.Features.Recipes.RecipeSummaryDto(r.Id, r.Title, r.Slug, r.Description,
                     r.Images.Where(i => i.IsPrimary).Select(i => i.OriginalUrl).FirstOrDefault(),
                     r.PrepTimeMinutes, r.CookTimeMinutes, r.Servings,
-                    r.Difficulty.ToString(), r.PublishedAt))
+                    r.Difficulty.ToString(), r.Status.ToString(), r.PublishedAt))
                 .ToListAsync();
 
             return Results.Ok(new { items, totalCount = total, page, pageSize });
+        });
+
+        group.MapGet("/mine", async (ISender sender,
+            int page = 1, int pageSize = 12, string? status = null) =>
+        {
+            page = Math.Max(page, 1);
+            pageSize = Math.Clamp(pageSize, 1, 50);
+
+            try
+            {
+                var result = await sender.Send(new GetMyRecipesQuery(page, pageSize, status));
+                return Results.Ok(new { items = result.Items, totalCount = result.TotalCount, page = result.Page, pageSize = result.PageSize });
+            }
+            catch (FluentValidation.ValidationException ex)
+            {
+                return Results.UnprocessableEntity(new { title = "Validation failed", errors = ToErrors(ex) });
+            }
         });
 
         group.MapGet("/{slug}", async (string slug, ISender sender) =>
@@ -89,12 +99,12 @@ public static class RecipeEndpoints
             return Results.Ok(recipe);
         });
 
-        group.MapPost("/", async (CreateRecipeCommand req, ISender sender) =>
+        group.MapPost("/", async (CreateRecipeCommand req, ISender sender, IOutputCacheStore store, CancellationToken ct) =>
         {
             try
             {
-                var recipe = await sender.Send(req);
-                EvictListCache();
+                var recipe = await sender.Send(req, ct);
+                await store.EvictByTagAsync("recipes", ct);
                 return Results.Created($"/api/v1/recipes/{Uri.EscapeDataString(recipe.Slug)}", recipe);
             }
             catch (FluentValidation.ValidationException ex)
@@ -103,41 +113,41 @@ public static class RecipeEndpoints
             }
         });
 
-        group.MapPut("/{id:guid}", async (Guid id, UpdateRecipeRequest req, ISender sender) =>
+        group.MapPut("/{id:guid}", async (Guid id, UpdateRecipeRequest req, ISender sender, IOutputCacheStore store, CancellationToken ct) =>
         {
             var result = await sender.Send(new UpdateRecipeCommand(
                 id, req.Title, req.Description, req.Instructions, req.CategoryId,
                 req.PrepTimeMinutes, req.CookTimeMinutes, req.Servings, req.Difficulty, req.RowVersion,
-                req.Nutrition));
-            EvictListCache();
+                req.Nutrition), ct);
+            await store.EvictByTagAsync("recipes", ct);
             return Results.Ok(result);
         });
 
-        group.MapPatch("/{id:guid}/publish", async (Guid id, ISender sender) =>
+        group.MapPatch("/{id:guid}/publish", async (Guid id, ISender sender, IOutputCacheStore store, CancellationToken ct) =>
         {
-            var result = await sender.Send(new PublishRecipeCommand(id));
-            EvictListCache();
+            var result = await sender.Send(new PublishRecipeCommand(id), ct);
+            await store.EvictByTagAsync("recipes", ct);
             return Results.Ok(result);
         });
 
-        group.MapPatch("/{id:guid}/unpublish", async (Guid id, ISender sender) =>
+        group.MapPatch("/{id:guid}/unpublish", async (Guid id, ISender sender, IOutputCacheStore store, CancellationToken ct) =>
         {
-            var result = await sender.Send(new UnpublishRecipeCommand(id));
-            EvictListCache();
+            var result = await sender.Send(new UnpublishRecipeCommand(id), ct);
+            await store.EvictByTagAsync("recipes", ct);
             return Results.Ok(result);
         });
 
-        group.MapPatch("/{id:guid}/archive", async (Guid id, ISender sender) =>
+        group.MapPatch("/{id:guid}/archive", async (Guid id, ISender sender, IOutputCacheStore store, CancellationToken ct) =>
         {
-            var result = await sender.Send(new ArchiveRecipeCommand(id));
-            EvictListCache();
+            var result = await sender.Send(new ArchiveRecipeCommand(id), ct);
+            await store.EvictByTagAsync("recipes", ct);
             return Results.Ok(result);
         });
 
-        group.MapDelete("/{id:guid}", async (Guid id, ISender sender) =>
+        group.MapDelete("/{id:guid}", async (Guid id, ISender sender, IOutputCacheStore store, CancellationToken ct) =>
         {
-            await sender.Send(new DeleteRecipeCommand(id));
-            EvictListCache();
+            await sender.Send(new DeleteRecipeCommand(id), ct);
+            await store.EvictByTagAsync("recipes", ct);
             return Results.NoContent();
         });
     }
