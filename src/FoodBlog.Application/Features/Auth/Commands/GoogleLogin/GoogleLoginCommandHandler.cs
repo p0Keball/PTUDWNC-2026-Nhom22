@@ -4,12 +4,12 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using FoodBlog.Application.Common.Interfaces;
 using FoodBlog.Application.DTOs.Auth;
+using FoodBlog.Application.Options;
 using FoodBlog.Domain.Entities;
 using MediatR;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
-using FoodBlog.Application.Options;
 
 namespace FoodBlog.Application.Features.Auth.Commands.GoogleLogin;
 
@@ -21,20 +21,23 @@ public sealed class GoogleLoginCommandHandler : IRequestHandler<GoogleLoginComma
     private readonly SignInManager<ApplicationUser> _signInManager;
     private readonly IFoodBlogDbContext _db;
     private readonly HttpClient _httpClient;
-    private readonly GoogleOAuthOptions _options;
+    private readonly RoleManager<IdentityRole> _roleManager;
+    private readonly GoogleOAuthOptions _googleOptions;
 
     public GoogleLoginCommandHandler(
         UserManager<ApplicationUser> userManager,
         SignInManager<ApplicationUser> signInManager,
         IFoodBlogDbContext db,
         HttpClient httpClient,
-        IOptions<GoogleOAuthOptions> options)
+        RoleManager<IdentityRole> roleManager,
+        IOptions<GoogleOAuthOptions> googleOptions)
     {
         _userManager = userManager;
         _signInManager = signInManager;
         _db = db;
         _httpClient = httpClient;
-        _options = options.Value;
+        _roleManager = roleManager;
+        _googleOptions = googleOptions.Value;
     }
 
     public async Task<AuthResponseDto> Handle(
@@ -43,9 +46,13 @@ public sealed class GoogleLoginCommandHandler : IRequestHandler<GoogleLoginComma
     {
         if (string.IsNullOrWhiteSpace(request.Code) ||
             string.IsNullOrWhiteSpace(request.CodeVerifier) ||
-            string.IsNullOrWhiteSpace(_options.ClientId) ||
-            string.IsNullOrWhiteSpace(_options.RedirectUri))
-            throw new UnauthorizedAccessException("Thông tin OAuth Google không hợp lệ.");
+            string.IsNullOrWhiteSpace(request.RedirectUri))
+            throw new UnauthorizedAccessException("Google authorization code không hợp lệ.");
+
+        if (string.IsNullOrWhiteSpace(_googleOptions.ClientId) ||
+            string.IsNullOrWhiteSpace(_googleOptions.RedirectUri) ||
+            !string.Equals(request.RedirectUri, _googleOptions.RedirectUri, StringComparison.Ordinal))
+            throw new UnauthorizedAccessException("Google OAuth configuration không hợp lệ.");
 
         using var tokenRequest = new HttpRequestMessage(
             HttpMethod.Post,
@@ -53,38 +60,36 @@ public sealed class GoogleLoginCommandHandler : IRequestHandler<GoogleLoginComma
         {
             Content = new FormUrlEncodedContent(new Dictionary<string, string>
             {
-                ["client_id"] = _options.ClientId,
+                ["client_id"] = _googleOptions.ClientId,
                 ["code"] = request.Code,
                 ["code_verifier"] = request.CodeVerifier,
-                ["redirect_uri"] = _options.RedirectUri,
+                ["redirect_uri"] = request.RedirectUri,
                 ["grant_type"] = "authorization_code"
             })
         };
 
-        if (!string.IsNullOrWhiteSpace(_options.ClientSecret))
-        {
+        if (!string.IsNullOrWhiteSpace(_googleOptions.ClientSecret))
             tokenRequest.Content = new FormUrlEncodedContent(new Dictionary<string, string>
             {
-                ["client_id"] = _options.ClientId,
-                ["client_secret"] = _options.ClientSecret,
+                ["client_id"] = _googleOptions.ClientId,
+                ["client_secret"] = _googleOptions.ClientSecret,
                 ["code"] = request.Code,
                 ["code_verifier"] = request.CodeVerifier,
-                ["redirect_uri"] = _options.RedirectUri,
+                ["redirect_uri"] = request.RedirectUri,
                 ["grant_type"] = "authorization_code"
             });
-        }
 
         using var tokenResponse = await _httpClient.SendAsync(
             tokenRequest,
             HttpCompletionOption.ResponseHeadersRead,
             cancellationToken);
         if (!tokenResponse.IsSuccessStatusCode)
-            throw new UnauthorizedAccessException("Không thể đổi mã xác thực Google.");
+            throw new UnauthorizedAccessException("Không thể đổi Google authorization code.");
 
         var tokenPayload = await tokenResponse.Content.ReadFromJsonAsync<GoogleTokenResponse>(
             cancellationToken: cancellationToken);
         if (tokenPayload is null || string.IsNullOrWhiteSpace(tokenPayload.AccessToken))
-            throw new UnauthorizedAccessException("Phản hồi OAuth Google không hợp lệ.");
+            throw new UnauthorizedAccessException("Google token response không hợp lệ.");
 
         using var googleRequest = new HttpRequestMessage(
             HttpMethod.Get,
@@ -128,18 +133,35 @@ public sealed class GoogleLoginCommandHandler : IRequestHandler<GoogleLoginComma
                     throw new InvalidOperationException(
                         string.Join(", ", createResult.Errors.Select(error => error.Description)));
 
-                var roleResult = await _userManager.AddToRoleAsync(user, "Author");
-                if (!roleResult.Succeeded)
+                if (!await _roleManager.RoleExistsAsync("Author"))
+                {
+                    var roleResult = await _roleManager.CreateAsync(new IdentityRole("Author"));
+                    if (!roleResult.Succeeded && !await _roleManager.RoleExistsAsync("Author"))
+                    {
+                        await _userManager.DeleteAsync(user);
+                        throw new InvalidOperationException("Không thể khởi tạo role Author.");
+                    }
+                }
+
+                var authorResult = await _userManager.AddToRoleAsync(user, "Author");
+                if (!authorResult.Succeeded)
+                {
+                    await _userManager.DeleteAsync(user);
                     throw new InvalidOperationException(
-                        string.Join(", ", roleResult.Errors.Select(error => error.Description)));
+                        string.Join(", ", authorResult.Errors.Select(error => error.Description)));
+                }
             }
 
-            var loginResult = await _userManager.AddLoginAsync(
-                user,
-                new UserLoginInfo("Google", googleUser.Sub, "Google"));
-            if (!loginResult.Succeeded)
-                throw new InvalidOperationException(
-                    string.Join(", ", loginResult.Errors.Select(error => error.Description)));
+            var existingLogin = await _userManager.FindByLoginAsync("Google", googleUser.Sub);
+            if (existingLogin is null)
+            {
+                var loginResult = await _userManager.AddLoginAsync(
+                    user,
+                    new UserLoginInfo("Google", googleUser.Sub, "Google"));
+                if (!loginResult.Succeeded)
+                    throw new InvalidOperationException(
+                        string.Join(", ", loginResult.Errors.Select(error => error.Description)));
+            }
         }
 
         if (!user.IsActive)
@@ -178,6 +200,12 @@ public sealed class GoogleLoginCommandHandler : IRequestHandler<GoogleLoginComma
         Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(token)))
             .ToLowerInvariant();
 
+    private sealed record GoogleTokenResponse(
+        [property: System.Text.Json.Serialization.JsonPropertyName("access_token")]
+        string? AccessToken,
+        [property: System.Text.Json.Serialization.JsonPropertyName("id_token")]
+        string? IdToken);
+
     private sealed record GoogleUserInfo(
         string? Sub,
         string? Email,
@@ -185,8 +213,4 @@ public sealed class GoogleLoginCommandHandler : IRequestHandler<GoogleLoginComma
         string? Picture,
         [property: System.Text.Json.Serialization.JsonPropertyName("email_verified")]
         bool EmailVerified);
-
-    private sealed record GoogleTokenResponse(
-        [property: System.Text.Json.Serialization.JsonPropertyName("access_token")]
-        string? AccessToken);
 }

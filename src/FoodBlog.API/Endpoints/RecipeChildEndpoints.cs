@@ -1,4 +1,6 @@
 using System.Security.Claims;
+using Asp.Versioning;
+using Asp.Versioning.Builder;
 using FluentValidation;
 using FoodBlog.Application.Common;
 using FoodBlog.Application.Features.Recipes;
@@ -26,9 +28,13 @@ public static class RecipeChildEndpoints
     private static readonly CreateIngredientValidator CreateIngredientValidator = new();
     private static readonly UpdateIngredientValidator UpdateIngredientValidator = new();
 
-    public static void MapRecipeChildEndpoints(this WebApplication app)
+    public static void MapRecipeChildEndpoints(this WebApplication app, ApiVersionSet apiVersionSet)
     {
-        var group = app.MapGroup("/api/v1/recipes/{id:guid}");
+        var group = app.MapGroup("/api/v{version:apiVersion}/recipes/{id:guid}")
+            .WithApiVersionSet(apiVersionSet)
+            .HasApiVersion(new ApiVersion(1, 0))
+            .RequireAuthorization()
+            .RequireRateLimiting("upload");
 
         group.MapPost("/steps", async (Guid id, CreateStepRequest req, FoodBlogDbContext db,
             ClaimsPrincipal user, CancellationToken ct) =>
@@ -188,7 +194,7 @@ public static class RecipeChildEndpoints
 
         // FR-RCP-008 / §8.4: upload multipart/form-data đúng đặc tả SRS.
         group.MapPost("/images", async (Guid id, IFormFile file, FoodBlogDbContext db,
-            IFileStorageService storage, ClaimsPrincipal user, CancellationToken ct,
+            IFileStorageService storage, IImageJobQueue jobs, ClaimsPrincipal user, CancellationToken ct,
             string? altText = null) =>
         {
             var recipe = await db.Recipes.FirstOrDefaultAsync(r => r.Id == id, ct);
@@ -231,6 +237,8 @@ public static class RecipeChildEndpoints
             db.RecipeImages.Add(image);
             await db.SaveChangesAsync(ct);
             EvictListCache();
+            // FR-JOB-002: đẩy job tạo thumbnail nền (fire-and-forget).
+            jobs.EnqueueThumbnail(image.Id);
             return Results.Created($"/api/v1/recipes/{id}/images/{image.Id}", ToImage(image));
         }).DisableAntiforgery();
 
@@ -274,7 +282,7 @@ public static class RecipeChildEndpoints
 
         // Bước 2 confirm: kiểm tra object thực tế trên MinIO (size + magic bytes) rồi mới lưu DB.
         group.MapPost("/images/confirm", async (Guid id, ConfirmImageRequest req, FoodBlogDbContext db,
-            IFileStorageService storage, ClaimsPrincipal user, CancellationToken ct) =>
+            IFileStorageService storage, IImageJobQueue jobs, ClaimsPrincipal user, CancellationToken ct) =>
         {
             var recipe = await db.Recipes.FirstOrDefaultAsync(r => r.Id == id, ct);
             if (recipe is null) return NotFound(id);
@@ -332,6 +340,8 @@ public static class RecipeChildEndpoints
             db.RecipeImages.Add(image);
             await db.SaveChangesAsync(ct);
             EvictListCache();
+            // FR-JOB-002: đẩy job tạo thumbnail nền (fire-and-forget).
+            jobs.EnqueueThumbnail(image.Id);
             return Results.Created($"/api/v1/recipes/{id}/images/{image.Id}", ToImage(image));
         });
 
@@ -361,8 +371,8 @@ public static class RecipeChildEndpoints
             var originalUrl = image.OriginalUrl;
             db.RecipeImages.Remove(image);
             await db.SaveChangesAsync(ct);
-            // Xóa object trên MinIO (best-effort + retry trong storage, không fail request nếu MinIO lỗi).
-            try { await storage.DeleteAsync(originalUrl, ct); } catch { /* graceful fallback */ }
+            // MinIO cleanup: xóa đệ quy gốc + medium + thumb (best-effort, không fail request).
+            try { await storage.DeleteImageVariantsAsync(originalUrl, ct); } catch { /* graceful fallback */ }
             if (wasPrimary)
             {
                 var next = await db.RecipeImages.Where(i => i.RecipeId == id).OrderBy(i => i.OrderIndex).FirstOrDefaultAsync(ct);

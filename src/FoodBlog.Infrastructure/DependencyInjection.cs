@@ -39,6 +39,9 @@ public static class DependencyInjection
         });
 
         services.AddSingleton(TimeProvider.System);
+        services.Configure<EmailOptions>(config.GetSection(EmailOptions.SectionName));
+        services.Configure<GoogleOAuthOptions>(config.GetSection(GoogleOAuthOptions.SectionName));
+        services.AddScoped<IEmailSender, SmtpEmailSender>();
         services.AddFileStorage(config);
         return services;
     }
@@ -58,6 +61,10 @@ public static class DependencyInjection
             return new AmazonS3Client(minio.AccessKey, minio.SecretKey, s3Config);
         });
         services.AddSingleton<IFileStorageService, MinioFileStorageService>();
+        services.AddSingleton<IImageResizer, ImageSharpResizer>();
+        services.AddSingleton<ImageJobQueue>();
+        services.AddSingleton<IImageJobQueue>(sp => sp.GetRequiredService<ImageJobQueue>());
+        services.AddHostedService<ImageJobWorker>();
         return services;
     }
 }

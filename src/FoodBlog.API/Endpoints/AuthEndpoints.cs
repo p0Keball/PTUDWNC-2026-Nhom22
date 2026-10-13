@@ -1,6 +1,10 @@
 using System.Security.Claims;
 using System.Security.Cryptography;
+using Asp.Versioning;
+using Asp.Versioning.Builder;
+using Hangfire;
 using FoodBlog.Application.DTOs.Auth;
+using FoodBlog.Infrastructure.Jobs;
 using FoodBlog.Application.Features.Auth.Commands.GoogleLogin;
 using FoodBlog.Application.Features.Auth.Commands.Logout;
 using FoodBlog.Application.Features.Auth.Commands.RefreshToken;
@@ -18,10 +22,14 @@ namespace FoodBlog.API.Endpoints;
 public static class AuthEndpoints
 {
     public static IEndpointRouteBuilder MapAuthEndpoints(
-        this IEndpointRouteBuilder app)
+        this IEndpointRouteBuilder app,
+        ApiVersionSet apiVersionSet)
     {
-        var group = app.MapGroup("/api/v1/auth")
-            .WithTags("Authentication");
+        var group = app.MapGroup("/api/v{version:apiVersion}/auth")
+            .WithApiVersionSet(apiVersionSet)
+            .HasApiVersion(new ApiVersion(1, 0))
+            .WithTags("Authentication")
+            .RequireRateLimiting("auth");
 
         group.MapPost("/register", Register);
         group.MapPost("/login", Login);
@@ -30,10 +38,22 @@ public static class AuthEndpoints
         group.MapPost("/logout", Logout).RequireAuthorization();
 
         group.MapGet("/me", GetMe)
-            .RequireAuthorization();
+            .RequireAuthorization()
+            .WithName("GetCurrentUserProfile")
+            .WithSummary("Xem hồ sơ người dùng hiện tại")
+            .WithDescription("Trả về thông tin hồ sơ của tài khoản đang đăng nhập.")
+            .Produces<UserProfileDto>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status401Unauthorized);
 
         group.MapPatch("/me", UpdateMe)
-            .RequireAuthorization();
+            .RequireAuthorization()
+            .WithName("UpdateCurrentUserProfile")
+            .WithSummary("Cập nhật hồ sơ người dùng hiện tại")
+            .WithDescription("Cập nhật từng phần tên hiển thị, avatar hoặc tiểu sử của tài khoản đang đăng nhập.")
+            .Produces<UserProfileDto>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status400BadRequest)
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status422UnprocessableEntity);
 
         return app;
     }
@@ -44,6 +64,7 @@ public static class AuthEndpoints
         RoleManager<IdentityRole> roles,
         SignInManager<ApplicationUser> signInManager,
         FoodBlogDbContext db,
+        IBackgroundJobClient backgroundJobs,
         HttpContext httpContext,
         CancellationToken ct)
     {
@@ -86,6 +107,8 @@ public static class AuthEndpoints
 
         var refreshToken = await CreateRefreshTokenAsync(user, db, httpContext, ct);
         await signInManager.SignInAsync(user, isPersistent: false);
+        backgroundJobs.Enqueue<WelcomeEmailJob>(job =>
+            job.SendAsync(user.Email!, user.DisplayName, CancellationToken.None));
         return Results.Ok(ToResponse(user, refreshToken));
     }
 
@@ -175,6 +198,7 @@ public static class AuthEndpoints
                 new GoogleLoginCommand(
                     request.Code,
                     request.CodeVerifier,
+                    request.RedirectUri,
                     httpContext.Connection.RemoteIpAddress?.ToString()),
                 ct);
             return Results.Ok(result);

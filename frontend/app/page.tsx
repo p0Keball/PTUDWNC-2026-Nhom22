@@ -21,11 +21,33 @@ export default async function Home({
 
   return (
     <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 p-4 sm:p-6">
-      <div className="flex flex-col gap-1">
-        <h1 className="text-2xl font-bold sm:text-3xl">Công thức mới nhất</h1>
-        <p className="text-sm text-zinc-500">
-          {data.totalCount} công thức đã xuất bản
-        </p>
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex flex-col gap-1">
+          <h1 className="text-2xl font-bold sm:text-3xl">Công thức mới nhất</h1>
+          <p className="text-sm text-zinc-500">
+            {data.totalCount} công thức đã xuất bản
+          </p>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <Link
+            href="/login"
+            className="rounded-full border border-zinc-200 px-4 py-2 text-sm font-medium hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
+          >
+            Đăng nhập
+          </Link>
+          <Link
+            href="/profile"
+            className="rounded-full bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white"
+          >
+            Hồ sơ
+          </Link>
+          <Link
+            href="/recipes/create"
+            className="hidden rounded-full bg-orange-500 px-4 py-2 text-sm font-medium text-white hover:bg-orange-600 sm:inline-block"
+          >
+            Tạo công thức
+          </Link>
+        </div>
       </div>
 
       {data.items.length === 0 ? (

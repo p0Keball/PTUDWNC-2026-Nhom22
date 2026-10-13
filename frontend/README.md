@@ -1,63 +1,85 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# FoodBlog Frontend
 
-## Getting Started
+Frontend của FoodBlog được xây dựng bằng Next.js App Router, React và
+Tailwind CSS. Ứng dụng gọi FoodBlog API qua biến môi trường
+`NEXT_PUBLIC_API_URL`.
 
-First, run the development server:
+## Yêu cầu môi trường
+
+- Node.js 20 LTS trở lên
+- npm 10 trở lên
+- FoodBlog API đang chạy (mặc định `http://localhost:5000`)
+
+## Cài đặt và chạy local
 
 ```bash
+cd frontend
+npm install
+copy .env.example .env.local
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Mở [http://localhost:3000](http://localhost:3000).
 
-## Google OAuth
-
-Create a Google OAuth client of type **Web application** and add
-`http://localhost:3000/login` to its authorized redirect URIs. Configure the
-same values in the API and frontend before testing:
+Trên macOS/Linux, dùng lệnh sau để tạo file môi trường:
 
 ```bash
-# frontend/.env.local
-NEXT_PUBLIC_GOOGLE_CLIENT_ID=your-google-client-id
-NEXT_PUBLIC_API_URL=http://localhost:5000
+cp .env.example .env.local
 ```
 
-```json
-// src/FoodBlog.API/appsettings.Development.json
-{
-	"GoogleOAuth": {
-		"ClientId": "your-google-client-id",
-		"ClientSecret": "",
-		"RedirectUri": "http://localhost:3000/login"
-	}
-}
+## Biến môi trường
+
+| Biến | Bắt buộc | Mô tả |
+| --- | --- | --- |
+| `NEXT_PUBLIC_API_URL` | Không | URL backend API, mặc định `http://localhost:5000` |
+| `NEXT_PUBLIC_GOOGLE_CLIENT_ID` | Khi dùng Google Login | Google OAuth Client ID public |
+
+Không đặt client secret, database connection string hoặc token bí mật trong
+biến `NEXT_PUBLIC_*`. Các biến này được đưa vào bundle trình duyệt.
+
+Google OAuth callback cần được đăng ký tại Google Cloud:
+
+```text
+http://localhost:3000/auth/google/callback
 ```
 
-The login page creates the PKCE verifier and challenge in the browser. The API
-exchanges the authorization code, verifies the Google profile, links an
-existing user by verified email, or creates a new `Author` account.
+## Cấu trúc thư mục
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```text
+frontend/
+├── app/                    # Route và layout theo Next.js App Router
+│   ├── auth/               # OAuth callback
+│   ├── dashboard/          # Khu vực quản trị nội dung
+│   ├── login/              # Đăng nhập email/Google
+│   ├── profile/            # Xem và cập nhật profile
+│   └── recipes/            # Danh sách, chi tiết, tạo và sửa recipe
+├── components/             # UI component dùng lại
+├── lib/
+│   ├── api.ts              # API client và kiểu dữ liệu
+│   └── config.ts           # Cấu hình runtime public
+├── public/                 # Tài nguyên tĩnh
+├── next.config.ts          # Cấu hình Next.js
+├── postcss.config.mjs      # Tailwind/PostCSS
+└── tsconfig.json           # TypeScript và alias @/*
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Kiểm tra trước khi commit
 
-## Learn More
+```bash
+npm run typecheck
+npm run lint
+npm run build
+```
 
-To learn more about Next.js, take a look at the following resources:
+`npm run build` tạo bản production. Chạy bản production bằng:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+npm run start
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Ghi chú xác thực
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Frontend lưu access/refresh token theo contract hiện tại của API và gửi
+Identity cookie bằng `credentials: "include"`. CORS backend phải cho phép
+đúng origin frontend, ví dụ `http://localhost:3000`; không dùng wildcard khi
+credentials được bật.
