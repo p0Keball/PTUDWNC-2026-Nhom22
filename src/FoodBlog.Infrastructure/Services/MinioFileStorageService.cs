@@ -114,6 +114,66 @@ public class MinioFileStorageService : IFileStorageService
         return ms.ToArray();
     }
 
+    public async Task<(Stream Content, string ContentType)> DownloadAsync(string objectKey, CancellationToken ct = default)
+    {
+        var response = await _s3Client.GetObjectAsync(_options.Bucket, objectKey, ct);
+        var ms = new MemoryStream();
+        try
+        {
+            await response.ResponseStream.CopyToAsync(ms, ct);
+            var contentType = response.Headers.ContentType;
+            response.Dispose();
+            ms.Position = 0;
+            return (ms, contentType);
+        }
+        catch
+        {
+            await ms.DisposeAsync();
+            response.Dispose();
+            throw;
+        }
+    }
+
+    public async Task<string> UploadStreamAsync(Stream content, string objectKey, string contentType, CancellationToken ct = default)
+    {
+        if (content.CanSeek)
+            content.Position = 0;
+
+        var uploadRequest = new TransferUtilityUploadRequest
+        {
+            InputStream = content,
+            Key = objectKey,
+            BucketName = _options.Bucket,
+            ContentType = contentType,
+        };
+
+        var transferUtility = new TransferUtility(_s3Client);
+        await transferUtility.UploadAsync(uploadRequest, ct);
+
+        return GetPublicUrl(objectKey);
+    }
+
+    public string? TryExtractKey(string fileUrl) => ExtractKey(fileUrl);
+
+    public async Task DeleteImageVariantsAsync(string originalUrl, CancellationToken ct = default)
+    {
+        var key = ExtractKey(originalUrl);
+        if (key is null)
+            return;
+        // Recursive deletion: gốc + medium + thumb, best-effort từng key.
+        foreach (var k in FoodBlog.Application.Common.ImageVariants.AllKeys(key))
+        {
+            try
+            {
+                await DeleteByKeyAsync(k, ct);
+            }
+            catch
+            {
+                // Best-effort — caller retry ở tầng job nếu cần.
+            }
+        }
+    }
+
     public async Task EnsureBucketExistsAsync(CancellationToken ct = default)
     {
         await ExecuteWithRetryAsync(async () =>

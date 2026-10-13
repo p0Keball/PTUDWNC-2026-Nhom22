@@ -23,5 +23,20 @@ public interface IFileStorageService
     /// <summary>Đọc N byte đầu của object để kiểm tra magic bytes.</summary>
     Task<byte[]> ReadLeadingBytesAsync(string objectKey, int count, CancellationToken ct = default);
 
+    /// <summary>Tải toàn bộ object về MemoryStream (tối đa file ảnh 5MB).</summary>
+    Task<(Stream Content, string ContentType)> DownloadAsync(string objectKey, CancellationToken ct = default);
+
+    /// <summary>Upload stream có sẵn lên object key chỉ định, trả về public URL.</summary>
+    Task<string> UploadStreamAsync(Stream content, string objectKey, string contentType, CancellationToken ct = default);
+
+    /// <summary>Trích xuất object key từ public URL (null khi không parse được).</summary>
+    string? TryExtractKey(string fileUrl);
+
+    /// <summary>
+    /// Xóa đệ quy ảnh gốc + các biến thể medium/thumb (MinIO cleanup).
+    /// Idempotent, best-effort từng key.
+    /// </summary>
+    Task DeleteImageVariantsAsync(string originalUrl, CancellationToken ct = default);
+
     Task EnsureBucketExistsAsync(CancellationToken ct = default);
 }

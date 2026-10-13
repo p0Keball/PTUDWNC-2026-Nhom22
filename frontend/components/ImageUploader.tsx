@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { imageApi, uploadRecipeImage, type RecipeImage } from "@/lib/api";
+import { thumbSrc } from "@/components/RecipeGallery";
 
 const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp", "image/avif"];
 const MAX_SIZE = 5 * 1024 * 1024;
@@ -17,6 +18,7 @@ export default function ImageUploader({ recipeId, images, onChange }: Props) {
   const [uploadingName, setUploadingName] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
+  const [lightboxId, setLightboxId] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -119,7 +121,7 @@ export default function ImageUploader({ recipeId, images, onChange }: Props) {
           className="hidden"
           onChange={(e) => handleFiles(e.target.files)}
         />
-        <span className="text-xs text-zinc-500">JPEG/PNG/WebP, tối đa 5MB.</span>
+        <span className="text-xs text-zinc-500">JPEG/PNG/WebP/AVIF, tối đa 5MB.</span>
       </div>
 
       {preview && (
@@ -146,11 +148,18 @@ export default function ImageUploader({ recipeId, images, onChange }: Props) {
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
           {images.map((img) => (
             <div key={img.id} className="relative overflow-hidden rounded-xl border dark:border-zinc-800">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={img.originalUrl} alt={img.altText ?? "recipe image"} className="aspect-square w-full object-cover" loading="lazy" />
+              <button type="button" onClick={() => setLightboxId(img.id)} title="Nhấn để phóng to">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={thumbSrc(img)} alt={img.altText ?? "recipe image"} className="aspect-square w-full object-cover" loading="lazy" />
+              </button>
               {img.isPrimary && (
                 <span className="absolute left-2 top-2 rounded-full bg-zinc-900 px-2 py-1 text-[11px] text-white">
                   Ảnh chính
+                </span>
+              )}
+              {img.thumbnailStatus === "pending" && (
+                <span className="absolute right-2 top-2 rounded-full bg-black/60 px-2 py-1 text-[11px] text-white">
+                  Đang xử lý…
                 </span>
               )}
               <div className="flex gap-1 p-2">
@@ -174,6 +183,26 @@ export default function ImageUploader({ recipeId, images, onChange }: Props) {
             </div>
           ))}
         </div>
+      )}
+
+      {lightboxId && (
+        (() => {
+          const img = images.find((i) => i.id === lightboxId);
+          if (!img) return null;
+          return (
+            <div
+              className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+              onClick={() => setLightboxId(null)}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={img.originalUrl}
+                alt={img.altText ?? "recipe image"}
+                className="max-h-full max-w-full rounded-xl object-contain"
+              />
+            </div>
+          );
+        })()
       )}
     </div>
   );
