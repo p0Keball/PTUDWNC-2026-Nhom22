@@ -39,6 +39,12 @@ public class RecipeImage : BaseEntity
         IsPrimary = isPrimary;
     }
 
+    public void SetThumbnails(string? mediumUrl, string? thumbnailUrl)
+    {
+        MediumUrl = mediumUrl;
+        ThumbnailUrl = thumbnailUrl;
+    }
+
     public void SetOrder(int orderIndex)
     {
         OrderIndex = orderIndex;
