@@ -1,4 +1,7 @@
 using FoodBlog.Application.Contracts.Persistence;
+using Microsoft.AspNetCore.Authorization;
+using Asp.Versioning;
+using Asp.Versioning.Builder;
 using FoodBlog.Domain.Common;
 using FoodBlog.Domain.Entities;
 using FoodBlog.Domain.Enums;
@@ -18,9 +21,11 @@ public static class CategoryEndpoints
 {
     private const string CacheKey = "categories:all";
 
-    public static void MapCategoryEndpoints(this WebApplication app)
+    public static void MapCategoryEndpoints(this WebApplication app, ApiVersionSet apiVersionSet)
     {
-        var group = app.MapGroup("/api/v1/categories")
+        var group = app.MapGroup("/api/v{version:apiVersion}/categories")
+            .WithApiVersionSet(apiVersionSet)
+            .HasApiVersion(new ApiVersion(1, 0))
             .RequireRateLimiting("general");
 
         group.MapGet("/", async (IUnitOfWork uow, IMemoryCache cache) =>
@@ -85,7 +90,7 @@ public static class CategoryEndpoints
             return Results.Created($"/api/v1/categories/{Uri.EscapeDataString(category.Slug)}",
                 new CategoryDto(category.Id, category.Name, category.Slug,
                     category.Description, category.ImageUrl, category.OrderIndex, 0));
-        });
+        }).RequireAuthorization(new AuthorizeAttribute { Roles = "Admin" });
 
         group.MapPut("/{id:guid}", async (Guid id, UpdateCategoryRequest req, IUnitOfWork uow, IMemoryCache cache) =>
         {
@@ -107,7 +112,7 @@ public static class CategoryEndpoints
             var count = await uow.Categories.CountPublishedRecipesAsync(id);
             return Results.Ok(new CategoryDto(category.Id, category.Name, category.Slug,
                 category.Description, category.ImageUrl, category.OrderIndex, count));
-        });
+        }).RequireAuthorization(new AuthorizeAttribute { Roles = "Admin" });
 
         group.MapDelete("/{id:guid}", async (Guid id, IUnitOfWork uow, IMemoryCache cache) =>
         {
@@ -124,7 +129,7 @@ public static class CategoryEndpoints
             await uow.SaveChangesAsync();
             cache.Remove(CacheKey);
             return Results.NoContent();
-        });
+        }).RequireAuthorization(new AuthorizeAttribute { Roles = "Admin" });
     }
 
     private static void ThrowIfInvalidName(string? name)

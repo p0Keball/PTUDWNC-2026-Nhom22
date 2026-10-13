@@ -67,7 +67,10 @@ export default function DashboardRecipesPage() {
   }, []);
 
   useEffect(() => {
-    load(tab, 1);
+    const timer = window.setTimeout(() => {
+      void load(tab, 1);
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [tab, load]);
 
   const refresh = () => load(tab, page);

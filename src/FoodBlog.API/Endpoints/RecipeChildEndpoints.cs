@@ -1,4 +1,6 @@
 using System.Security.Claims;
+using Asp.Versioning;
+using Asp.Versioning.Builder;
 using FluentValidation;
 using FoodBlog.Application.Common;
 using FoodBlog.Application.Features.Recipes;
@@ -26,9 +28,13 @@ public static class RecipeChildEndpoints
     private static readonly CreateIngredientValidator CreateIngredientValidator = new();
     private static readonly UpdateIngredientValidator UpdateIngredientValidator = new();
 
-    public static void MapRecipeChildEndpoints(this WebApplication app)
+    public static void MapRecipeChildEndpoints(this WebApplication app, ApiVersionSet apiVersionSet)
     {
-        var group = app.MapGroup("/api/v1/recipes/{id:guid}");
+        var group = app.MapGroup("/api/v{version:apiVersion}/recipes/{id:guid}")
+            .WithApiVersionSet(apiVersionSet)
+            .HasApiVersion(new ApiVersion(1, 0))
+            .RequireAuthorization()
+            .RequireRateLimiting("upload");
 
         group.MapPost("/steps", async (Guid id, CreateStepRequest req, FoodBlogDbContext db,
             ClaimsPrincipal user, CancellationToken ct) =>
