@@ -1,4 +1,6 @@
 using FoodBlog.Application.Features.Recipes;
+using Asp.Versioning;
+using Asp.Versioning.Builder;
 using FoodBlog.Application.Features.Recipes.Commands;
 using FoodBlog.Application.Features.Recipes.Queries;
 using FoodBlog.Domain.Common;
@@ -23,9 +25,11 @@ public static class RecipeEndpoints
 {
     private static CancellationTokenSource _listCacheCts = new();
 
-    public static void MapRecipeEndpoints(this WebApplication app)
+    public static void MapRecipeEndpoints(this WebApplication app, ApiVersionSet apiVersionSet)
     {
-        var group = app.MapGroup("/api/v1/recipes")
+        var group = app.MapGroup("/api/v{version:apiVersion}/recipes")
+            .WithApiVersionSet(apiVersionSet)
+            .HasApiVersion(new ApiVersion(1, 0))
             .RequireRateLimiting("general");
 
         group.MapGet("/", async (ISender sender,
@@ -79,7 +83,7 @@ public static class RecipeEndpoints
             {
                 return Results.UnprocessableEntity(new { title = "Validation failed", errors = ToErrors(ex) });
             }
-        });
+        }).RequireAuthorization();
 
         group.MapGet("/{slug}", async (string slug, ISender sender) =>
         {
@@ -111,7 +115,7 @@ public static class RecipeEndpoints
             {
                 return Results.UnprocessableEntity(new { title = "Validation failed", errors = ToErrors(ex) });
             }
-        });
+        }).RequireAuthorization();
 
         group.MapPut("/{id:guid}", async (Guid id, UpdateRecipeRequest req, ISender sender, IOutputCacheStore store, CancellationToken ct) =>
         {
@@ -121,35 +125,35 @@ public static class RecipeEndpoints
                 req.Nutrition), ct);
             await store.EvictByTagAsync("recipes", ct);
             return Results.Ok(result);
-        });
+        }).RequireAuthorization();
 
         group.MapPatch("/{id:guid}/publish", async (Guid id, ISender sender, IOutputCacheStore store, CancellationToken ct) =>
         {
             var result = await sender.Send(new PublishRecipeCommand(id), ct);
             await store.EvictByTagAsync("recipes", ct);
             return Results.Ok(result);
-        });
+        }).RequireAuthorization();
 
         group.MapPatch("/{id:guid}/unpublish", async (Guid id, ISender sender, IOutputCacheStore store, CancellationToken ct) =>
         {
             var result = await sender.Send(new UnpublishRecipeCommand(id), ct);
             await store.EvictByTagAsync("recipes", ct);
             return Results.Ok(result);
-        });
+        }).RequireAuthorization();
 
         group.MapPatch("/{id:guid}/archive", async (Guid id, ISender sender, IOutputCacheStore store, CancellationToken ct) =>
         {
             var result = await sender.Send(new ArchiveRecipeCommand(id), ct);
             await store.EvictByTagAsync("recipes", ct);
             return Results.Ok(result);
-        });
+        }).RequireAuthorization();
 
         group.MapDelete("/{id:guid}", async (Guid id, ISender sender, IOutputCacheStore store, CancellationToken ct) =>
         {
             await sender.Send(new DeleteRecipeCommand(id), ct);
             await store.EvictByTagAsync("recipes", ct);
             return Results.NoContent();
-        });
+        }).RequireAuthorization();
     }
 
     public static void EvictListCache()

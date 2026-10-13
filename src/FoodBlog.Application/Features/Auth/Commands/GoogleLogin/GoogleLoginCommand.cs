@@ -4,5 +4,7 @@ using MediatR;
 namespace FoodBlog.Application.Features.Auth.Commands.GoogleLogin;
 
 public sealed record GoogleLoginCommand(
-    string AccessToken,
+    string Code,
+    string CodeVerifier,
+    string RedirectUri,
     string? IpAddress) : IRequest<AuthResponseDto>;

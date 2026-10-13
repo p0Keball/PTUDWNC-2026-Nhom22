@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { useFieldArray, useForm } from "react-hook-form";
+import { useFieldArray, useForm, useWatch } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { ingredientApi, type RecipeIngredient } from "@/lib/api";
@@ -39,7 +39,6 @@ export default function IngredientForm({ recipeId = null, defaultIngredients = [
     register,
     handleSubmit,
     reset,
-    watch,
     formState: { errors },
   } = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -56,7 +55,7 @@ export default function IngredientForm({ recipeId = null, defaultIngredients = [
   });
 
   const { fields, append, remove, update } = useFieldArray({ control, name: "items" });
-  const items = watch("items");
+  const items = useWatch({ control, name: "items" });
 
   useEffect(() => {
     onChange?.(items);

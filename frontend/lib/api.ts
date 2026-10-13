@@ -1,3 +1,5 @@
+import { appConfig } from "@/lib/config";
+
 export interface RecipeSummary {
   id: string;
   title: string;
@@ -108,6 +110,33 @@ export class ApiError extends Error {
   }
 }
 
+export interface AuthUser {
+  id: string;
+  email: string;
+  displayName: string;
+  role: string;
+}
+
+export interface AuthResponse {
+  accessToken: string;
+  refreshToken: string;
+  expiresAt: string;
+  user: AuthUser;
+}
+
+export interface UserProfile extends AuthUser {
+  avatarUrl: string | null;
+  bio: string | null;
+  isActive: boolean;
+  createdAt: string;
+}
+
+export interface UpdateProfileInput {
+  displayName?: string;
+  avatarUrl?: string;
+  bio?: string;
+}
+
 function authHeaders(token?: string): Record<string, string> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (token) headers["Authorization"] = `Bearer ${token}`;
@@ -129,8 +158,7 @@ async function throwApiError(res: Response, fallback: string): Promise<never> {
   throw new ApiError(res.status, title, code, errors);
 }
 
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5000";
+const API_BASE = appConfig.apiUrl;
 
 export interface Category {
   id: string;
@@ -149,6 +177,123 @@ export async function getCategories(): Promise<Category[]> {
   if (!res.ok) throw new Error(`Failed to fetch categories: ${res.status}`);
   return res.json();
 }
+
+export async function login(email: string, password: string): Promise<AuthResponse> {
+  const res = await fetch(`${API_BASE}/api/v1/auth/login`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify({ email, password }),
+    credentials: "include",
+    cache: "no-store",
+  });
+  if (!res.ok) await throwApiError(res, "Đăng nhập thất bại.");
+  return res.json();
+}
+
+export async function loginWithGoogle(
+  code: string,
+  codeVerifier: string,
+  redirectUri: string
+): Promise<AuthResponse> {
+  const res = await fetch(`${API_BASE}/api/v1/auth/google`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify({ code, codeVerifier, redirectUri }),
+    credentials: "include",
+    cache: "no-store",
+  });
+  if (!res.ok) await throwApiError(res, "Đăng nhập Google thất bại.");
+  return res.json();
+}
+
+export async function getMyProfile(token: string): Promise<UserProfile> {
+  const res = await fetch(`${API_BASE}/api/v1/auth/me`, {
+    headers: authHeaders(token),
+    credentials: "include",
+    cache: "no-store",
+  });
+  if (!res.ok) await throwApiError(res, "Không tải được hồ sơ.");
+  return res.json();
+}
+
+export async function updateMyProfile(
+  input: UpdateProfileInput,
+  token: string
+): Promise<UserProfile> {
+  const res = await fetch(`${API_BASE}/api/v1/auth/me`, {
+    method: "PATCH",
+    headers: authHeaders(token),
+    body: JSON.stringify(input),
+    credentials: "include",
+    cache: "no-store",
+  });
+  if (!res.ok) await throwApiError(res, "Cập nhật hồ sơ thất bại.");
+  return res.json();
+}
+
+export interface AuthResponse {
+  accessToken: string;
+  refreshToken: string;
+  expiresAt: string;
+  user: {
+    id: string;
+    email: string;
+    fullName: string;
+    role: string;
+  };
+}
+
+export async function loginWithGoogleCode(
+  code: string,
+  codeVerifier: string
+): Promise<AuthResponse> {
+  const response = await fetch(`${API_BASE}/api/v1/auth/google`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ code, codeVerifier }),
+  });
+  const data = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new Error(data?.detail ?? data?.title ?? "Đăng nhập Google thất bại.");
+  }
+  return data;
+}
+
+export interface UserProfile {
+  id: string;
+  email: string;
+  displayName: string;
+  avatarUrl: string | null;
+  bio: string | null;
+  role: string;
+  isActive: boolean;
+  createdAt: string;
+}
+
+async function profileRequest<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
+  const response = await fetch(input, {
+    ...init,
+    credentials: "include",
+  });
+  const data = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new Error(data?.detail ?? data?.title ?? "Không thể thực hiện yêu cầu hồ sơ.");
+  }
+  return data;
+}
+
+export const profileApi = {
+  get: () => profileRequest<UserProfile>(`${API_BASE}/api/v1/auth/me`),
+  update: (payload: {
+    displayName?: string | null;
+    avatarUrl?: string | null;
+    bio?: string | null;
+  }) => profileRequest<UserProfile>(`${API_BASE}/api/v1/auth/me`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  }),
+};
 
 export async function getRecipes(
   page = 1,
