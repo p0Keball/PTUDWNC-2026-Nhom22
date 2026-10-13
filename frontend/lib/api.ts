@@ -172,6 +172,35 @@ export async function getRecipeBySlug(slug: string): Promise<RecipeDetail | null
   return res.json();
 }
 
+export async function createRecipe(
+  input: CreateRecipeInput,
+  token?: string
+): Promise<RecipeDetail> {
+  const res = await fetch(`${API_BASE}/api/v1/recipes`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify(input),
+    cache: "no-store",
+  });
+  if (!res.ok) await throwApiError(res, "Tạo công thức thất bại.");
+  return res.json();
+}
+
+export async function updateRecipe(
+  id: string,
+  input: UpdateRecipeInput,
+  token?: string
+): Promise<RecipeDetail> {
+  const res = await fetch(`${API_BASE}/api/v1/recipes/${encodeURIComponent(id)}`, {
+    method: "PUT",
+    headers: authHeaders(token),
+    body: JSON.stringify(input),
+    cache: "no-store",
+  });
+  if (!res.ok) await throwApiError(res, "Cập nhật công thức thất bại.");
+  return res.json();
+}
+
 
 export type RecipeStep = RecipeDetail["steps"][number];
 export type RecipeIngredient = RecipeDetail["ingredients"][number];
@@ -328,32 +357,63 @@ export async function uploadRecipeImage(
   return imageApi.confirm(recipeId, presigned.objectKey, altText);
 }
 
-export async function createRecipe(
-  input: CreateRecipeInput,
-  token?: string
-): Promise<RecipeDetail> {
-  const res = await fetch(`${API_BASE}/api/v1/recipes`, {
-    method: "POST",
-    headers: authHeaders(token),
-    body: JSON.stringify(input),
-    cache: "no-store",
-  });
-  if (!res.ok) await throwApiError(res, "Tạo công thức thất bại.");
+export interface CategoryDetail {
+  category: Category;
+  recipes: {
+    items: RecipeSummary[];
+    totalCount: number;
+    page: number;
+    pageSize: number;
+  };
+}
+
+export async function getCategoryBySlug(
+  slug: string,
+  page = 1,
+  pageSize = 12
+): Promise<CategoryDetail | null> {
+  const res = await fetch(
+    `${API_BASE}/api/v1/categories/${encodeURIComponent(slug)}?page=${page}&pageSize=${pageSize}`,
+    { next: { revalidate: 600 } }
+  );
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`Failed to fetch category: ${res.status}`);
   return res.json();
 }
 
-export async function updateRecipe(
-  id: string,
-  input: UpdateRecipeInput,
-  token?: string
-): Promise<RecipeDetail> {
-  const res = await fetch(`${API_BASE}/api/v1/recipes/${encodeURIComponent(id)}`, {
-    method: "PUT",
-    headers: authHeaders(token),
-    body: JSON.stringify(input),
+export interface SearchParams {
+  q: string;
+  page?: number;
+  pageSize?: number;
+  categoryId?: string;
+  difficulty?: string;
+  maxCookTime?: number;
+  sort?: string;
+}
+
+export interface SearchResponse {
+  items: RecipeSummary[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+}
+
+export async function searchRecipes(
+  params: SearchParams
+): Promise<SearchResponse> {
+  const query = new URLSearchParams();
+  query.set("q", params.q);
+  query.set("page", String(params.page ?? 1));
+  query.set("pageSize", String(params.pageSize ?? 12));
+  if (params.categoryId) query.set("categoryId", params.categoryId);
+  if (params.difficulty) query.set("difficulty", params.difficulty);
+  if (params.maxCookTime !== undefined)
+    query.set("maxCookTime", String(params.maxCookTime));
+  if (params.sort) query.set("sort", params.sort);
+  const res = await fetch(`${API_BASE}/api/v1/recipes/search?${query}`, {
     cache: "no-store",
   });
-  if (!res.ok) await throwApiError(res, "Cập nhật công thức thất bại.");
+  if (!res.ok) throw new Error(`Failed to search recipes: ${res.status}`);
   return res.json();
 }
 

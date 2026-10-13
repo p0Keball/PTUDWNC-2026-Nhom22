@@ -25,7 +25,8 @@ public static class RecipeEndpoints
 
     public static void MapRecipeEndpoints(this WebApplication app)
     {
-        var group = app.MapGroup("/api/v1/recipes");
+        var group = app.MapGroup("/api/v1/recipes")
+            .RequireRateLimiting("general");
 
         group.MapGet("/", async (ISender sender,
             int page = 1, int pageSize = 12, Guid? categoryId = null,

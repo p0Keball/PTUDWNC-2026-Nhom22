@@ -5,7 +5,7 @@ namespace FoodBlog.Application.Contracts.Persistence;
 public interface IUnitOfWork : IAsyncDisposable
 {
     IRecipeRepository Recipes { get; }
-    IRepository<Category> Categories { get; }
+    ICategoryRepository Categories { get; }
 
     Task<int> SaveChangesAsync(CancellationToken ct = default);
 

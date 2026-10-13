@@ -1,3 +1,4 @@
+using System.Threading.RateLimiting;
 using FoodBlog.API.Endpoints;
 using FoodBlog.API.Middlewares;
 using FoodBlog.API.Services;
@@ -10,7 +11,9 @@ using FoodBlog.Infrastructure.Seed;
 using FoodBlog.Application.Features.Auth.Commands.GoogleLogin;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using Scalar.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -31,7 +34,7 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
     options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
     options.KnownNetworks.Clear();
     options.KnownProxies.Clear();
-    
+
 });
 builder.Services.AddDbContext<FoodBlogDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("Default")));
@@ -39,8 +42,8 @@ builder.Services.AddScoped<IFoodBlogDbContext>(sp => sp.GetRequiredService<FoodB
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
-builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
-    {
+builder.Services.AddAuthorization();
+builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>    {
         options.Password.RequiredLength = 8;
         options.Password.RequireDigit = true;
         options.Password.RequireUppercase = true;
@@ -62,6 +65,8 @@ builder.Services.Configure<PasswordHasherOptions>(options =>
 var app = builder.Build();
 
 app.UseForwardedHeaders();
+app.UseCors("Frontend");
+app.UseRateLimiter();
 app.UseMiddleware<GlobalExceptionMiddleware>();
 app.UseAuthentication();
 app.UseAuthorization();
@@ -77,6 +82,7 @@ using (var scope = app.Services.CreateScope())
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
+    app.MapScalarApiReference();
 }
 
 app.MapHealthEndpoints();

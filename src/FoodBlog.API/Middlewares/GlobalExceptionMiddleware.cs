@@ -81,6 +81,19 @@ public class GlobalExceptionMiddleware(RequestDelegate next, ILogger<GlobalExcep
             RecipePublishIncompleteException rex => (
                 HttpStatusCode.UnprocessableEntity, rex.ErrorCode, rex.Message, null),
 
+            Domain.Exceptions.ValidationException vex => (
+                HttpStatusCode.UnprocessableEntity, vex.ErrorCode, vex.Message,
+                vex.Errors.ToDictionary(kv => kv.Key, kv => kv.Value)),
+
+            NotFoundException nex => (
+                HttpStatusCode.NotFound, nex.ErrorCode, nex.Message, null),
+
+            ConflictException cex => (
+                HttpStatusCode.Conflict, cex.ErrorCode, cex.Message, null),
+
+            UnauthorizedException uex => (
+                HttpStatusCode.Unauthorized, uex.ErrorCode, uex.Message, null),
+
             DomainException dex => (
                 HttpStatusCode.BadRequest, dex.ErrorCode, dex.Message, null),
 
