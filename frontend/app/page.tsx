@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Pagination from "@/components/Pagination";
 import RecipeCard from "@/components/RecipeCard";
 import { getRecipes } from "@/lib/api";
 
@@ -46,29 +47,12 @@ export default async function Home({
         </div>
       )}
 
-      <div className="flex items-center justify-between pt-2 text-sm">
-        <span>
-          Trang {data.page} / {totalPages}
-        </span>
-        <div className="flex gap-2">
-          {page > 1 && (
-            <Link
-              href={`/?page=${page - 1}`}
-              className="rounded-full border px-4 py-2 hover:bg-zinc-100 dark:hover:bg-zinc-800"
-            >
-              Trước
-            </Link>
-          )}
-          {page < totalPages && (
-            <Link
-              href={`/?page=${page + 1}`}
-              className="rounded-full border px-4 py-2 hover:bg-zinc-100 dark:hover:bg-zinc-800"
-            >
-              Sau
-            </Link>
-          )}
-        </div>
-      </div>
+      <Pagination
+        page={data.page}
+        totalPages={totalPages}
+        prevHref={page > 1 ? `/?page=${page - 1}` : null}
+        nextHref={page < totalPages ? `/?page=${page + 1}` : null}
+      />
     </main>
   );
 }

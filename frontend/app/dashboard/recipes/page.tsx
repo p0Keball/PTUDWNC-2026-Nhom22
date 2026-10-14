@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import Pagination from "@/components/Pagination";
 import {
   ApiError,
   archiveRecipe,
@@ -253,29 +254,13 @@ export default function DashboardRecipesPage() {
         </div>
       )}
 
-      <div className="flex items-center justify-between pt-2 text-sm">
-        <span>
-          Trang {page} / {totalPages}
-        </span>
-        <div className="flex gap-2">
-          <button
-            type="button"
-            disabled={page <= 1 || loading}
-            onClick={() => load(tab, page - 1)}
-            className="rounded-full border px-4 py-2 hover:bg-zinc-100 disabled:opacity-50 dark:hover:bg-zinc-800"
-          >
-            Trước
-          </button>
-          <button
-            type="button"
-            disabled={page >= totalPages || loading}
-            onClick={() => load(tab, page + 1)}
-            className="rounded-full border px-4 py-2 hover:bg-zinc-100 disabled:opacity-50 dark:hover:bg-zinc-800"
-          >
-            Sau
-          </button>
-        </div>
-      </div>
+      <Pagination
+        page={page}
+        totalPages={totalPages}
+        onPrevious={() => load(tab, page - 1)}
+        onNext={() => load(tab, page + 1)}
+        disabled={loading}
+      />
     </main>
   );
 }
