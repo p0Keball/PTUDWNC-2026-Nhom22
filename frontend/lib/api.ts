@@ -357,6 +357,69 @@ export async function uploadRecipeImage(
   return imageApi.confirm(recipeId, presigned.objectKey, altText);
 }
 
+// ---- TUẦN 4 (Trần Gia Huy): MinIO Reliability + Orphan + Validation ----
+
+export interface StorageHealth {
+  status: "healthy" | "unhealthy";
+  checkedAt: string;
+}
+
+export async function getStorageHealth(signal?: AbortSignal): Promise<StorageHealth> {
+  const res = await fetch(`${API_BASE}/api/v1/storage/health`, {
+    cache: "no-store",
+    signal,
+  });
+  // 503 vẫn có JSON {status: unhealthy} — parse để FE hiện banner.
+  const data = await res.json().catch(() => null);
+  if (data?.status) return data as StorageHealth;
+  return { status: res.ok ? "healthy" : "unhealthy", checkedAt: new Date().toISOString() };
+}
+
+export interface OrphanReport {
+  totalObjects: number;
+  referencedObjects: number;
+  orphanCount: number;
+  orphanBytes: number;
+  orphanKeys: string[];
+  checkedAt: string;
+  dryRun: boolean;
+}
+
+export async function getOrphanPreview(): Promise<OrphanReport> {
+  const res = await fetch(`${API_BASE}/api/v1/admin/storage/orphans`, { cache: "no-store" });
+  if (!res.ok) await throwApiError(res, "Quét file mồ côi thất bại.");
+  return res.json();
+}
+
+export async function cleanupOrphans(): Promise<OrphanReport> {
+  const res = await fetch(`${API_BASE}/api/v1/admin/storage/orphans/cleanup`, {
+    method: "POST",
+    cache: "no-store",
+  });
+  if (!res.ok) await throwApiError(res, "Dọn file mồ côi thất bại.");
+  return res.json();
+}
+
+export interface RecipeValidation {
+  recipeId: string;
+  hasSteps: boolean;
+  hasIngredients: boolean;
+  hasCoverImage: boolean;
+  stepsCount: number;
+  ingredientsCount: number;
+  imagesCount: number;
+  canPublish: boolean;
+  issues: string[];
+}
+
+export async function getRecipeValidation(recipeId: string): Promise<RecipeValidation> {
+  const res = await fetch(`${API_BASE}/api/v1/recipes/${recipeId}/validation`, {
+    cache: "no-store",
+  });
+  if (!res.ok) await throwApiError(res, "Tải checklist validation thất bại.");
+  return res.json();
+}
+
 export interface CategoryDetail {
   category: Category;
   recipes: {

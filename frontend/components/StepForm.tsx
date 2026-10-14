@@ -111,6 +111,19 @@ export default function StepForm({ recipeId = null, defaultSteps = [], onChange 
   const { fields, append, remove, update, move } = useFieldArray({ control, name: "items" });
   const items = watch("items");
 
+  // TUẦN 4 — Form Validation: phát hiện trùng tiêu đề (normalize trim+lower).
+  const duplicateTitles = (() => {
+    const seen = new Map<string, number>();
+    const dups = new Set<string>();
+    for (const it of items ?? []) {
+      const k = (it.title ?? "").trim().toLowerCase();
+      if (!k) continue;
+      if (seen.has(k)) dups.add(k);
+      else seen.set(k, 1);
+    }
+    return dups;
+  })();
+
   useEffect(() => {
     onChange?.(items);
   }, [items, onChange]);
@@ -188,7 +201,16 @@ export default function StepForm({ recipeId = null, defaultSteps = [], onChange 
       </div>
 
       {dragError && <p className="text-sm text-red-600">{dragError}</p>}
-      {fields.length === 0 && <p className="text-sm text-zinc-500">Chưa có bước nào.</p>}
+      {fields.length === 0 && (
+        <p className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          Chưa có bước nào — công thức cần ít nhất 1 bước mới publish được.
+        </p>
+      )}
+      {duplicateTitles.size > 0 && (
+        <p className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          Có tiêu đề bước bị trùng — vui lòng đặt tên khác nhau cho từng bước.
+        </p>
+      )}
 
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <SortableContext items={fields.map((f) => f.key)} strategy={verticalListSortingStrategy}>
@@ -210,19 +232,36 @@ export default function StepForm({ recipeId = null, defaultSteps = [], onChange 
                     rows={2}
                     className="w-full rounded-lg border px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950"
                   />
+                  {errors.items?.[index]?.description && (
+                    <p className="text-xs text-red-600">{errors.items[index]?.description?.message}</p>
+                  )}
                   <div className="grid grid-cols-2 gap-2">
-                    <input
-                      type="number"
-                      {...register(`items.${index}.timerMinutes`, { valueAsNumber: true })}
-                      placeholder="Timer (phút)"
-                      className="w-full rounded-lg border px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950"
-                    />
-                    <input
-                      {...register(`items.${index}.imageUrl`)}
-                      placeholder="Image URL (tùy chọn)"
-                      className="w-full rounded-lg border px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950"
-                    />
+                    <div>
+                      <input
+                        type="number"
+                        {...register(`items.${index}.timerMinutes`, { valueAsNumber: true })}
+                        placeholder="Timer (phút)"
+                        className="w-full rounded-lg border px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950"
+                      />
+                      {errors.items?.[index]?.timerMinutes && (
+                        <p className="mt-1 text-xs text-red-600">{errors.items[index]?.timerMinutes?.message}</p>
+                      )}
+                    </div>
+                    <div>
+                      <input
+                        {...register(`items.${index}.imageUrl`)}
+                        placeholder="Image URL (tùy chọn)"
+                        className="w-full rounded-lg border px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950"
+                      />
+                      {errors.items?.[index]?.imageUrl && (
+                        <p className="mt-1 text-xs text-red-600">{errors.items[index]?.imageUrl?.message}</p>
+                      )}
+                    </div>
                   </div>
+                  {duplicateTitles.has((items?.[index]?.title ?? "").trim().toLowerCase()) &&
+                    (items?.[index]?.title ?? "").trim() !== "" && (
+                      <p className="text-xs text-amber-700">Tiêu đề này bị trùng với bước khác.</p>
+                    )}
                   <div className="flex gap-2">
                     {recipeId && (
                       <button

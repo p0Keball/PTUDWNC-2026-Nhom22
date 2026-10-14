@@ -3,6 +3,13 @@
 import { useState } from "react";
 import type { RecipeImage } from "@/lib/api";
 
+/** Fallback khi MinIO lỗi / URL gãy (graceful fallback TUẦN 4). */
+export const FALLBACK_IMG =
+  "data:image/svg+xml;charset=utf-8," +
+  encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="600"><rect width="100%" height="100%" fill="#e4e4e7"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-size="28" fill="#71717a">Ảnh tạm lỗi</text></svg>`
+  );
+
 interface Props {
   images: RecipeImage[];
 }
@@ -37,6 +44,10 @@ export default function RecipeGallery({ images }: Props) {
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={previewSrc(active)}
+          onError={(e) => {
+            if ((e.target as HTMLImageElement).src !== FALLBACK_IMG)
+              (e.target as HTMLImageElement).src = FALLBACK_IMG;
+          }}
           alt={active.altText ?? "recipe image"}
           className="aspect-[16/9] w-full object-cover"
         />
@@ -63,6 +74,10 @@ export default function RecipeGallery({ images }: Props) {
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={thumbSrc(img)}
+                onError={(e) => {
+                  if ((e.target as HTMLImageElement).src !== FALLBACK_IMG)
+                    (e.target as HTMLImageElement).src = FALLBACK_IMG;
+                }}
                 alt={img.altText ?? "thumbnail"}
                 loading="lazy"
                 className="aspect-square w-full object-cover"
@@ -80,6 +95,10 @@ export default function RecipeGallery({ images }: Props) {
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={active.originalUrl}
+            onError={(e) => {
+              if ((e.target as HTMLImageElement).src !== FALLBACK_IMG)
+                (e.target as HTMLImageElement).src = FALLBACK_IMG;
+            }}
             alt={active.altText ?? "recipe image"}
             className="max-h-full max-w-full rounded-xl object-contain"
           />
