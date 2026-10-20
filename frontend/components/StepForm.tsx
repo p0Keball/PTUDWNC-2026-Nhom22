@@ -43,6 +43,8 @@ interface Props {
   recipeId?: string | null;
   defaultSteps?: RecipeStep[];
   onChange?: (items: FormValues["items"]) => void;
+  /** Gọi sau khi 1 thao tác ghi (lưu/xóa/reorder) thành công — dùng để refresh checklist. */
+  onPersisted?: () => void;
 }
 
 function toKey(): string {
@@ -82,7 +84,7 @@ function SortableRow({
   );
 }
 
-export default function StepForm({ recipeId = null, defaultSteps = [], onChange }: Props) {
+export default function StepForm({ recipeId = null, defaultSteps = [], onChange, onPersisted }: Props) {
   const [dragError, setDragError] = useState<string | null>(null);
   const {
     control,
@@ -155,6 +157,7 @@ export default function StepForm({ recipeId = null, defaultSteps = [], onChange 
           );
         }
         reordered.forEach((row, idx) => setValue(`items.${idx}`, row, { shouldDirty: true }));
+        onPersisted?.();
       } catch (e) {
         setDragError(e instanceof Error ? e.message : "Reorder thất bại, vui lòng thử lại.");
         move(nextIndex, oldIndex);
@@ -177,12 +180,14 @@ export default function StepForm({ recipeId = null, defaultSteps = [], onChange 
       const created = await stepApi.create(recipeId, body);
       update(index, { ...value, key: created.id, id: created.id });
     }
+    onPersisted?.();
   }
 
   async function handleRemove(index: number) {
     const row = items[index];
     if (recipeId && row?.id) {
       await stepApi.remove(recipeId, row.id);
+      onPersisted?.();
     }
     remove(index);
   }

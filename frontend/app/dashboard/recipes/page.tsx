@@ -7,6 +7,7 @@ import {
   archiveRecipe,
   deleteRecipe,
   getMyRecipes,
+  getRecipeValidation,
   publishRecipe,
   unpublishRecipe,
   type RecipeSummary,
@@ -67,6 +68,8 @@ export default function DashboardRecipesPage() {
   }, []);
 
   useEffect(() => {
+    // Fetch danh sách khi đổi tab — setState nằm trong async load(), không phải render loop.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     load(tab, 1);
   }, [tab, load]);
 
@@ -75,12 +78,21 @@ export default function DashboardRecipesPage() {
   const runAction = async (
     id: string,
     action: () => Promise<unknown>,
-    okMessage: string
+    okMessage: string,
+    precheck?: () => Promise<string | null>
   ) => {
     setActing(id);
     setError(null);
     setNotice(null);
     try {
+      // Checklist trước khi Publish: chặn nếu chưa đủ điều kiện tối thiểu.
+      if (precheck) {
+        const issue = await precheck();
+        if (issue) {
+          setError(issue);
+          return;
+        }
+      }
       await action();
       setNotice(okMessage);
       await refresh();
@@ -121,7 +133,20 @@ export default function DashboardRecipesPage() {
             type="button"
             disabled={busy}
             onClick={() =>
-              runAction(r.id, () => publishRecipe(r.id, token), "Đã xuất bản.")
+              runAction(
+                r.id,
+                () => publishRecipe(r.id, token),
+                "Đã xuất bản.",
+                async () => {
+                  const validation = await getRecipeValidation(r.id);
+                  return validation.canPublish
+                    ? null
+                    : `Chưa thể xuất bản: ${
+                        validation.issues.join(" ") ||
+                        "Cần ít nhất 1 bước thực hiện."
+                      }`;
+                }
+              )
             }
             className={btn}
           >

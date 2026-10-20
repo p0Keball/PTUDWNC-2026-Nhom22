@@ -37,7 +37,7 @@ public sealed class CreateRecipeCommandValidator : AbstractValidator<CreateRecip
     }
 }
 
-public sealed class CreateRecipeCommandHandler(IFoodBlogDbContext db) : IRequestHandler<CreateRecipeCommand, RecipeDetailDto>
+public sealed class CreateRecipeCommandHandler(IFoodBlogDbContext db, ICurrentUserService currentUser) : IRequestHandler<CreateRecipeCommand, RecipeDetailDto>
 {
     public async Task<RecipeDetailDto> Handle(CreateRecipeCommand req, CancellationToken ct)
     {
@@ -56,7 +56,10 @@ public sealed class CreateRecipeCommandHandler(IFoodBlogDbContext db) : IRequest
             Servings = req.Servings,
             Difficulty = (Difficulty)req.Difficulty,
             Status = RecipeStatus.Draft,
-            AuthorId = await db.Users.Select(u => u.Id).FirstOrDefaultAsync(ct) ?? string.Empty
+            // Gán đúng chủ sở hữu khi có JWT; fallback user đầu tiên cho luồng dev chưa đăng nhập.
+            AuthorId = currentUser.UserId
+                ?? await db.Users.Select(u => u.Id).FirstOrDefaultAsync(ct)
+                ?? string.Empty
         };
 
         db.Recipes.Add(recipe);
