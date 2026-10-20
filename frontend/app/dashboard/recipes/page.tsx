@@ -2,9 +2,20 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { Edit3, Plus } from "lucide-react";
+import { toast } from "sonner";
+
+import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { EmptyState } from "@/components/EmptyState";
+import { PageHeader } from "@/components/PageHeader";
 import Pagination from "@/components/Pagination";
+import { RecipeListSkeleton } from "@/components/RecipeSkeleton";
+import { StatusBadge } from "@/components/StatusBadge";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
-  ApiError,
   archiveRecipe,
   deleteRecipe,
   getMyRecipes,
@@ -12,7 +23,8 @@ import {
   unpublishRecipe,
   type RecipeSummary,
 } from "@/lib/api";
-import { RecipeListSkeleton } from "@/components/RecipeSkeleton";
+import { getErrorMessage } from "@/lib/errors";
+import { useAuthStore } from "@/store/auth-store";
 
 type StatusTab = "all" | "draft" | "published" | "archived";
 
@@ -23,22 +35,9 @@ const TABS: { value: StatusTab; label: string }[] = [
   { value: "archived", label: "Lưu trữ" },
 ];
 
-const STATUS_LABEL: Record<string, string> = {
-  Draft: "Nháp",
-  Published: "Đã xuất bản",
-  Archived: "Lưu trữ",
-};
-
-function getAccessToken(): string | undefined {
-  if (typeof window === "undefined") return undefined;
-  return (
-    window.localStorage.getItem("accessToken") ??
-    window.localStorage.getItem("access_token") ??
-    undefined
-  );
-}
-
 export default function DashboardRecipesPage() {
+  const token = useAuthStore((state) => state.accessToken);
+
   const [tab, setTab] = useState<StatusTab>("all");
   const [items, setItems] = useState<RecipeSummary[]>([]);
   const [totalCount, setTotalCount] = useState(0);
@@ -46,210 +45,240 @@ export default function DashboardRecipesPage() {
   const [loading, setLoading] = useState(true);
   const [acting, setActing] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<RecipeSummary | null>(null);
 
   const pageSize = 12;
 
-  const load = useCallback(async (nextTab: StatusTab, nextPage: number) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await getMyRecipes(nextPage, pageSize, nextTab, getAccessToken());
-      setItems(data.items);
-      setTotalCount(data.totalCount);
-      setPage(data.page);
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 401)
-        setError("Bạn cần đăng nhập để xem dashboard.");
-      else setError("Không tải được danh sách. Vui lòng thử lại.");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const fetchPage = useCallback(
+    async (nextTab: StatusTab, nextPage: number, showLoading = true) => {
+      if (showLoading) setLoading(true);
+      try {
+        const data = await getMyRecipes(nextPage, pageSize, nextTab, token);
+        setItems(data.items);
+        setTotalCount(data.totalCount);
+        setPage(data.page);
+        setError(null);
+      } catch (err) {
+        setError(getErrorMessage(err, "Không tải được danh sách công thức."));
+      } finally {
+        setLoading(false);
+      }
+    },
+    [token]
+  );
 
   useEffect(() => {
-    load(tab, 1);
-  }, [tab, load]);
+    let cancelled = false;
 
-  const refresh = () => load(tab, page);
+    getMyRecipes(1, pageSize, tab, token)
+      .then((data) => {
+        if (cancelled) return;
+        setItems(data.items);
+        setTotalCount(data.totalCount);
+        setPage(data.page);
+        setError(null);
+      })
+      .catch((err) => {
+        if (!cancelled)
+          setError(getErrorMessage(err, "Không tải được danh sách công thức."));
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
 
-  const runAction = async (
-    id: string,
+    return () => {
+      cancelled = true;
+    };
+  }, [tab, token]);
+
+  function handleTabChange(value: string) {
+    setLoading(true);
+    setTab(value as StatusTab);
+  }
+
+  function handlePageChange(nextPage: number) {
+    setLoading(true);
+    void fetchPage(tab, nextPage, false);
+  }
+
+  async function runAction(
+    recipe: RecipeSummary,
     action: () => Promise<unknown>,
-    okMessage: string
-  ) => {
-    setActing(id);
+    successMessage: string
+  ) {
+    setActing(recipe.id);
     setError(null);
-    setNotice(null);
     try {
       await action();
-      setNotice(okMessage);
-      await refresh();
+      toast.success(successMessage);
+      const nextPage = items.length === 1 && page > 1 ? page - 1 : page;
+      await fetchPage(tab, nextPage, false);
     } catch (err) {
-      if (err instanceof ApiError) {
-        if (err.status === 401) setError("Bạn cần đăng nhập để thực hiện.");
-        else if (err.status === 403) setError("Bạn không có quyền với công thức này.");
-        else if (err.status === 409) setError("Dữ liệu đã bị thay đổi, vui lòng tải lại.");
-        else setError(err.message);
-      } else setError("Có lỗi xảy ra. Vui lòng thử lại.");
+      const message = getErrorMessage(err, "Thao tác thất bại. Vui lòng thử lại.");
+      setError(message);
+      toast.error(message);
     } finally {
       setActing(null);
+      setDeleteTarget(null);
     }
-  };
-
-  const handleDelete = (id: string, title: string) => {
-    if (!window.confirm(`Xóa vĩnh viễn "${title}"?`)) return;
-    runAction(id, () => deleteRecipe(id, getAccessToken()), "Đã xóa công thức.");
-  };
+  }
 
   const totalPages = Math.max(Math.ceil(totalCount / pageSize), 1);
 
-  const actionsFor = (r: RecipeSummary) => {
-    const token = getAccessToken();
-    const busy = acting === r.id;
-    const btn =
-      "rounded-full border px-3 py-1 text-xs hover:bg-zinc-100 disabled:opacity-50 dark:hover:bg-zinc-800";
+  function renderActions(recipe: RecipeSummary) {
+    const busy = acting === recipe.id;
+
     return (
       <div className="flex flex-wrap gap-2 pt-2">
-        <Link
-          href={`/recipes/${encodeURIComponent(r.slug)}/edit`}
-          className="rounded-full border px-3 py-1 text-xs hover:bg-zinc-100 dark:hover:bg-zinc-800"
-        >
-          Sửa
-        </Link>
-        {r.status === "Draft" && (
-          <button
+        <Button asChild variant="outline" size="sm" disabled={busy}>
+          <Link href={`/dashboard/recipes/${encodeURIComponent(recipe.slug)}/edit`}>
+            <Edit3 />
+            Sửa
+          </Link>
+        </Button>
+        {recipe.status === "Draft" && (
+          <Button
             type="button"
+            size="sm"
             disabled={busy}
             onClick={() =>
-              runAction(r.id, () => publishRecipe(r.id, token), "Đã xuất bản.")
+              runAction(
+                recipe,
+                () => publishRecipe(recipe.id, token),
+                "Đã xuất bản công thức."
+              )
             }
-            className={btn}
           >
             Xuất bản
-          </button>
+          </Button>
         )}
-        {r.status !== "Draft" && (
-          <button
+        {recipe.status !== "Draft" && recipe.status !== "Archived" && (
+          <Button
             type="button"
+            variant="outline"
+            size="sm"
             disabled={busy}
             onClick={() =>
-              runAction(r.id, () => unpublishRecipe(r.id, token), "Đã gỡ xuất bản.")
+              runAction(
+                recipe,
+                () => unpublishRecipe(recipe.id, token),
+                "Đã gỡ xuất bản."
+              )
             }
-            className={btn}
           >
             Gỡ xuất bản
-          </button>
+          </Button>
         )}
-        {r.status !== "Archived" && (
-          <button
+        {recipe.status !== "Archived" && (
+          <Button
             type="button"
+            variant="outline"
+            size="sm"
             disabled={busy}
             onClick={() =>
-              runAction(r.id, () => archiveRecipe(r.id, token), "Đã lưu trữ.")
+              runAction(
+                recipe,
+                () => archiveRecipe(recipe.id, token),
+                "Đã lưu trữ công thức."
+              )
             }
-            className={btn}
           >
             Lưu trữ
-          </button>
+          </Button>
         )}
-        <button
+        <Button
           type="button"
+          variant="destructive"
+          size="sm"
           disabled={busy}
-          onClick={() => handleDelete(r.id, r.title)}
-          className="rounded-full border border-red-300 px-3 py-1 text-xs text-red-600 hover:bg-red-50 disabled:opacity-50"
+          onClick={() => setDeleteTarget(recipe)}
         >
           Xóa
-        </button>
+        </Button>
       </div>
     );
-  };
+  }
 
   return (
-    <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 p-4 sm:p-6">
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex flex-col gap-1">
-          <h1 className="text-2xl font-bold sm:text-3xl">Công thức của tôi</h1>
-          <p className="text-sm text-zinc-500">{totalCount} công thức</p>
-        </div>
-        <Link
-          href="/recipes/create"
-          className="shrink-0 rounded-full bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white"
-        >
-          Tạo mới
-        </Link>
-      </div>
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        title="Công thức của tôi"
+        description={`${totalCount} công thức trong mục này.`}
+        actions={
+          <Button asChild>
+            <Link href="/dashboard/recipes/new">
+              <Plus />
+              Tạo công thức
+            </Link>
+          </Button>
+        }
+      />
 
-      <div className="flex gap-2">
-        {TABS.map((t) => (
-          <button
-            key={t.value}
-            type="button"
-            onClick={() => setTab(t.value)}
-            className={`rounded-full px-4 py-1.5 text-sm transition ${
-              tab === t.value
-                ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
-                : "border hover:bg-zinc-100 dark:hover:bg-zinc-800"
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+      <Tabs value={tab} onValueChange={handleTabChange}>
+        <TabsList className="w-fit">
+          {TABS.map((item) => (
+            <TabsTrigger key={item.value} value={item.value}>
+              {item.label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </Tabs>
 
       {error && (
-        <p className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
-          {error}
-        </p>
-      )}
-      {notice && (
-        <p className="rounded-lg border border-green-300 bg-green-50 px-3 py-2 text-sm text-green-800">
-          {notice}
-        </p>
+        <Alert variant="destructive">
+          <AlertTitle>Không tải được dữ liệu</AlertTitle>
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
       )}
 
       {loading ? (
         <RecipeListSkeleton count={6} />
       ) : items.length === 0 ? (
-        <p className="text-sm text-zinc-500">Chưa có công thức nào trong mục này.</p>
+        <EmptyState
+          title="Chưa có công thức nào"
+          description="Công thức bạn tạo sẽ xuất hiện ở đây để quản lý và xuất bản."
+          action={
+            <Button asChild>
+              <Link href="/dashboard/recipes/new">Viết công thức đầu tiên</Link>
+            </Button>
+          }
+        />
       ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {items.map((r) => (
-            <div
-              key={r.id}
-              className="flex flex-col overflow-hidden rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900"
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {items.map((recipe) => (
+            <Card
+              key={recipe.id}
+              className="gap-0 overflow-hidden p-0 transition hover:shadow-md"
             >
-              <div className="aspect-[16/10] w-full overflow-hidden bg-zinc-100 dark:bg-zinc-800">
-                {r.primaryImageUrl ? (
+              <div className="aspect-[16/10] w-full overflow-hidden bg-muted">
+                {recipe.primaryImageUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
-                    src={r.primaryImageUrl}
-                    alt={r.title}
+                    src={recipe.primaryImageUrl}
+                    alt={recipe.title}
                     loading="lazy"
                     className="h-full w-full object-cover"
                   />
                 ) : (
-                  <div className="flex h-full w-full items-center justify-center text-sm text-zinc-400">
+                  <div className="flex h-full w-full items-center justify-center text-sm text-muted-foreground">
                     Chưa có ảnh
                   </div>
                 )}
               </div>
-              <div className="flex flex-1 flex-col gap-1 p-4">
-                <span className="w-fit rounded-full bg-zinc-100 px-2 py-0.5 text-xs text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
-                  {STATUS_LABEL[r.status] ?? r.status}
-                </span>
+              <div className="flex flex-1 flex-col gap-2 p-4">
+                <StatusBadge status={recipe.status} />
                 <Link
-                  href={`/recipes/${encodeURIComponent(r.slug)}`}
-                  className="font-semibold leading-snug hover:underline"
+                  href={`/recipes/${encodeURIComponent(recipe.slug)}`}
+                  className="line-clamp-2 font-semibold leading-snug hover:underline"
                 >
-                  {r.title}
+                  {recipe.title}
                 </Link>
-                <p className="line-clamp-2 text-sm text-zinc-500 dark:text-zinc-400">
-                  {r.description}
+                <p className="line-clamp-2 text-sm text-muted-foreground">
+                  {recipe.description}
                 </p>
-                {actionsFor(r)}
+                {renderActions(recipe)}
               </div>
-            </div>
+            </Card>
           ))}
         </div>
       )}
@@ -257,10 +286,33 @@ export default function DashboardRecipesPage() {
       <Pagination
         page={page}
         totalPages={totalPages}
-        onPrevious={() => load(tab, page - 1)}
-        onNext={() => load(tab, page + 1)}
-        disabled={loading}
+        onPageChange={handlePageChange}
+        disabled={loading || Boolean(acting)}
       />
-    </main>
+
+      <ConfirmDialog
+        open={Boolean(deleteTarget)}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTarget(null);
+        }}
+        title="Xóa công thức?"
+        description={
+          deleteTarget
+            ? `Công thức "${deleteTarget.title}" sẽ bị xóa mềm và không còn hiển thị. Bạn có chắc chắn?`
+            : undefined
+        }
+        confirmLabel="Xóa"
+        destructive
+        loading={Boolean(deleteTarget && acting === deleteTarget.id)}
+        onConfirm={() => {
+          if (!deleteTarget) return;
+          void runAction(
+            deleteTarget,
+            () => deleteRecipe(deleteTarget.id, token),
+            "Đã xóa công thức."
+          );
+        }}
+      />
+    </div>
   );
 }

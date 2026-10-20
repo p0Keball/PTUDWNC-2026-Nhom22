@@ -1,10 +1,16 @@
+import { Container } from "@/components/Container";
 import { RecipeListSkeleton } from "@/components/RecipeSkeleton";
+import { Skeleton } from "@/components/ui/skeleton";
 
 export default function Loading() {
   return (
-    <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 p-4 sm:p-6">
-      <div className="h-8 w-48 animate-pulse rounded bg-zinc-200 dark:bg-zinc-800" />
+    <Container>
+      <div className="flex flex-col gap-2">
+        <Skeleton className="h-8 w-64" />
+        <Skeleton className="h-4 w-full max-w-xl" />
+      </div>
+      <Skeleton className="h-28 w-full rounded-xl" />
       <RecipeListSkeleton count={6} />
-    </main>
+    </Container>
   );
 }

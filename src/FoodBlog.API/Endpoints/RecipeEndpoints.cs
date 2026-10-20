@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using FoodBlog.Application.Features.Recipes;
 using FoodBlog.Application.Features.Recipes.Commands;
 using FoodBlog.Application.Features.Recipes.Queries;
@@ -82,7 +83,7 @@ public static class RecipeEndpoints
             }
         });
 
-        group.MapGet("/{slug}", async (string slug, ISender sender) =>
+        group.MapGet("/{slug}", async (string slug, ISender sender, HttpContext http) =>
         {
             RecipeDetailDto? recipe;
             try
@@ -96,7 +97,17 @@ public static class RecipeEndpoints
             if (recipe is null)
                 return Results.NotFound(new { code = "RECIPE_NOT_FOUND", title = "Không tìm thấy công thức.", slug });
             if (recipe.Status != RecipeStatus.Published.ToString())
-                return Results.Json(new { code = "RECIPE_FORBIDDEN", title = "Bạn không có quyền xem công thức này." }, statusCode: 403);
+            {
+                // Tác giả/Admin được xem bản nháp & lưu trữ để phục vụ trang chỉnh sửa.
+                var userId = http.User.FindFirstValue(ClaimTypes.NameIdentifier);
+                var isAdmin = http.User.IsInRole("Admin");
+                if (userId != recipe.AuthorId && !isAdmin)
+                {
+                    return Results.Json(
+                        new { code = "RECIPE_FORBIDDEN", title = "Bạn không có quyền xem công thức này." },
+                        statusCode: 403);
+                }
+            }
             return Results.Ok(recipe);
         });
 
