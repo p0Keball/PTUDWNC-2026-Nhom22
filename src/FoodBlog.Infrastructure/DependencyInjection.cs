@@ -1,6 +1,7 @@
 using Amazon.S3;
 using FoodBlog.Application.Interfaces;
 using FoodBlog.Application.Options;
+using FoodBlog.Application.Options;
 using FoodBlog.Domain.Entities;
 using FoodBlog.Infrastructure.Persistence;
 using FoodBlog.Infrastructure.Services;
@@ -65,6 +66,10 @@ public static class DependencyInjection
         services.AddSingleton<ImageJobQueue>();
         services.AddSingleton<IImageJobQueue>(sp => sp.GetRequiredService<ImageJobQueue>());
         services.AddHostedService<ImageJobWorker>();
+        // TUẦN 4 (GiaHuy): orphaned files detection + background cleanup.
+        services.Configure<OrphanCleanupOptions>(config.GetSection(OrphanCleanupOptions.SectionName));
+        services.AddSingleton<OrphanCleanupRunner>();
+        services.AddHostedService<OrphanCleanupWorker>();
         return services;
     }
 }

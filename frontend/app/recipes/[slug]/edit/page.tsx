@@ -10,6 +10,7 @@ import RecipeForm, {
   type RecipeFormValues,
 } from "@/components/RecipeForm";
 import { RecipeFormSkeleton } from "@/components/RecipeSkeleton";
+import RecipeContentEditor from "@/components/RecipeContentEditor";
 import {
   ApiError,
   getCategories,
@@ -65,6 +66,7 @@ export default function EditRecipePage({
   const [serverError, setServerError] = useState<string | null>(null);
   const [conflict, setConflict] = useState(false);
   const [reloaded, setReloaded] = useState(false);
+  const [saved, setSaved] = useState(false);
   const [notFound, setNotFound] = useState(false);
 
   useEffect(() => {
@@ -83,9 +85,15 @@ export default function EditRecipePage({
         }
         setCategories(cats);
       })
-      .catch(() => {
-        if (!cancelled)
-          setServerError("Không tải được công thức. Vui lòng thử lại.");
+      .catch((err) => {
+        if (cancelled) return;
+        if (err instanceof ApiError && err.status === 401)
+          setServerError("Bạn cần đăng nhập để sửa công thức.");
+        else if (err instanceof ApiError && err.status === 403)
+          setServerError(
+            "Bạn không có quyền xem công thức này. Hãy đăng nhập bằng tài khoản đã tạo công thức."
+          );
+        else setServerError("Không tải được công thức. Vui lòng thử lại.");
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -105,6 +113,7 @@ export default function EditRecipePage({
     setSubmitting(true);
     setServerError(null);
     setConflict(false);
+    setSaved(false);
     try {
       const updated = await updateRecipe(
         detail.id,
@@ -121,7 +130,15 @@ export default function EditRecipePage({
         },
         getAccessToken()
       );
-      router.push(`/recipes/${encodeURIComponent(updated.slug)}`);
+      // Cập nhật rowVersion mới để lần lưu sau không bị 409.
+      setDetail(updated);
+      setValues(toFormValues(updated));
+      if (updated.status === "Published") {
+        router.push(`/recipes/${encodeURIComponent(updated.slug)}`);
+      } else {
+        // Draft: ở lại trang edit để nhập tiếp nguyên liệu/bước/ảnh.
+        setSaved(true);
+      }
     } catch (err) {
       if (err instanceof ApiError) {
         if (err.status === 401)
@@ -185,10 +202,14 @@ export default function EditRecipePage({
           <p className="text-sm text-zinc-500">{detail?.title}</p>
         </div>
         <Link
-          href={`/recipes/${encodeURIComponent(decodeURIComponent(slug))}`}
+          href={
+            detail?.status === "Published"
+              ? `/recipes/${encodeURIComponent(decodeURIComponent(slug))}`
+              : "/dashboard/recipes"
+          }
           className="rounded-full border px-4 py-2 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-800"
         >
-          Hủy
+          {detail?.status === "Published" ? "Hủy" : "Về Dashboard"}
         </Link>
       </div>
 
@@ -225,23 +246,40 @@ export default function EditRecipePage({
         </p>
       )}
 
-      {values && (
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          <RecipeForm
-            values={values}
-            errors={errors}
-            categories={categories}
-            disabled={submitting}
-            onChange={setValues}
+      {saved && !conflict && (
+        <p className="rounded-lg border border-green-300 bg-green-50 px-3 py-2 text-sm text-green-800">
+          Đã lưu thay đổi. Tiếp tục thêm nguyên liệu, các bước và ảnh bên dưới
+          — hoặc về Dashboard để xuất bản.
+        </p>
+      )}
+
+      {values && detail && (
+        <>
+          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+            <RecipeForm
+              values={values}
+              errors={errors}
+              categories={categories}
+              disabled={submitting}
+              onChange={setValues}
+            />
+            <button
+              type="submit"
+              disabled={submitting}
+              className="rounded-lg bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-zinc-700 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white"
+            >
+              {submitting ? "Đang lưu…" : "Lưu thay đổi"}
+            </button>
+          </form>
+
+          <RecipeContentEditor
+            key={detail.id}
+            recipeId={detail.id}
+            steps={detail.steps}
+            ingredients={detail.ingredients}
+            images={detail.images}
           />
-          <button
-            type="submit"
-            disabled={submitting}
-            className="rounded-lg bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-zinc-700 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white"
-          >
-            {submitting ? "Đang lưu…" : "Lưu thay đổi"}
-          </button>
-        </form>
+        </>
       )}
     </main>
   );

@@ -123,6 +123,16 @@ public static class RecipeChildEndpoints
             if (forbidden is not null) return forbidden;
             var invalid = ChildValidationResult.ToUnprocessable(CreateIngredientValidator, req);
             if (invalid is not null) return invalid;
+            // TUẦN 4 — Form Validation: chặn trùng tên nguyên liệu trong cùng recipe.
+            var name = req.Name.Trim();
+            var duplicate = await db.RecipeIngredients.AnyAsync(
+                i => i.RecipeId == id && i.Name.ToLower() == name.ToLower(), ct);
+            if (duplicate)
+                return Results.UnprocessableEntity(new
+                {
+                    title = "Nguyên liệu đã tồn tại trong công thức.",
+                    errors = new { name = new[] { $"\"{name}\" đã có trong danh sách." } },
+                });
 
             var order = await db.RecipeIngredients.Where(i => i.RecipeId == id).CountAsync(ct);
             var ingredient = RecipeIngredient.Create(id, req.Name.Trim(), req.Quantity,
@@ -144,6 +154,16 @@ public static class RecipeChildEndpoints
             if (ingredient is null) return Results.NotFound(new { title = "Không tìm thấy nguyên liệu.", ingId });
             var invalid = ChildValidationResult.ToUnprocessable(UpdateIngredientValidator, req);
             if (invalid is not null) return invalid;
+            // TUẦN 4 — Form Validation: chặn đổi tên trùng với nguyên liệu khác.
+            var newName = req.Name.Trim();
+            var dupOnUpdate = await db.RecipeIngredients.AnyAsync(
+                i => i.RecipeId == id && i.Id != ingId && i.Name.ToLower() == newName.ToLower(), ct);
+            if (dupOnUpdate)
+                return Results.UnprocessableEntity(new
+                {
+                    title = "Nguyên liệu đã tồn tại trong công thức.",
+                    errors = new { name = new[] { $"\"{newName}\" đã có trong danh sách." } },
+                });
             ingredient.Update(req.Name.Trim(), req.Quantity,
                 string.IsNullOrWhiteSpace(req.Unit) ? null : req.Unit.Trim(),
                 string.IsNullOrWhiteSpace(req.Notes) ? null : req.Notes.Trim());

@@ -76,7 +76,9 @@ export default function CreateRecipePage() {
         },
         getAccessToken()
       );
-      router.push(`/recipes/${encodeURIComponent(created.slug)}`);
+      // Draft chưa publish không xem được ở trang public → đưa thẳng vào trang edit
+      // để nhập tiếp nguyên liệu/bước/ảnh (trang edit gửi kèm token của chủ sở hữu).
+      router.push(`/recipes/${encodeURIComponent(created.slug)}/edit`);
     } catch (err) {
       if (err instanceof ApiError) {
         if (err.status === 401)

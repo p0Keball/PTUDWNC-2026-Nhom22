@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getRecipeBySlug } from "@/lib/api";
+import RecipeGallery from "@/components/RecipeGallery";
 
 export default async function RecipeDetailPage({
   params,
@@ -10,9 +11,6 @@ export default async function RecipeDetailPage({
   const { slug } = await params;
   const recipe = await getRecipeBySlug(decodeURIComponent(slug));
   if (!recipe) notFound();
-
-  const primary =
-    recipe.images.find((i) => i.isPrimary) ?? recipe.images[0] ?? null;
 
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-6 p-4 sm:p-6">
@@ -42,14 +40,7 @@ export default async function RecipeDetailPage({
         </Link>
       </div>
 
-      {primary && (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={primary.originalUrl}
-          alt={primary.altText ?? recipe.title}
-          className="aspect-[16/9] w-full rounded-xl object-cover"
-        />
-      )}
+      {recipe.images.length > 0 && <RecipeGallery images={recipe.images} />}
 
       <p className="leading-relaxed text-zinc-700 dark:text-zinc-300">
         {recipe.description}
