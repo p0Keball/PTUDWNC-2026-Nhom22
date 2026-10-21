@@ -19,6 +19,7 @@ import {
   archiveRecipe,
   deleteRecipe,
   getMyRecipes,
+  getRecipeValidation,
   publishRecipe,
   unpublishRecipe,
   type RecipeSummary,
@@ -104,11 +105,20 @@ export default function DashboardRecipesPage() {
   async function runAction(
     recipe: RecipeSummary,
     action: () => Promise<unknown>,
-    successMessage: string
+    successMessage: string,
+    precheck?: () => Promise<string | null>
   ) {
     setActing(recipe.id);
     setError(null);
     try {
+      // Checklist trước khi Publish: chặn nếu chưa đủ điều kiện tối thiểu.
+      if (precheck) {
+        const issue = await precheck();
+        if (issue) {
+          setError(issue);
+          return;
+        }
+      }
       await action();
       toast.success(successMessage);
       const nextPage = items.length === 1 && page > 1 ? page - 1 : page;
@@ -145,7 +155,16 @@ export default function DashboardRecipesPage() {
               runAction(
                 recipe,
                 () => publishRecipe(recipe.id, token),
-                "Đã xuất bản công thức."
+                "Đã xuất bản công thức.",
+                async () => {
+                  const validation = await getRecipeValidation(recipe.id);
+                  return validation.canPublish
+                    ? null
+                    : `Chưa thể xuất bản: ${
+                        validation.issues.join(" ") ||
+                        "Cần ít nhất 1 bước thực hiện."
+                      }`;
+                }
               )
             }
           >

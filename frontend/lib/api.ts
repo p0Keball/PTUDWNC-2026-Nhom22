@@ -514,6 +514,85 @@ export async function uploadRecipeImage(
 }
 
 /* -------------------------------------------------------------------------- */
+/* TUẦN 4 (Trần Gia Huy): MinIO Reliability + Orphan + Validation             */
+/* -------------------------------------------------------------------------- */
+
+export interface StorageHealth {
+  status: "healthy" | "unhealthy";
+  checkedAt: string;
+}
+
+export async function getStorageHealth(
+  signal?: AbortSignal
+): Promise<StorageHealth> {
+  try {
+    return await http.get<StorageHealth>("/api/v1/storage/health", {
+      cache: "no-store",
+      signal,
+      fallbackMessage: "Không kiểm tra được trạng thái storage.",
+    });
+  } catch (error) {
+    // 503 vẫn mang nghĩa storage không sẵn sàng — UI cần banner thay vì lỗi.
+    if (error instanceof ApiError && error.status === 503) {
+      return { status: "unhealthy", checkedAt: new Date().toISOString() };
+    }
+    throw error;
+  }
+}
+
+export interface OrphanReport {
+  totalObjects: number;
+  referencedObjects: number;
+  orphanCount: number;
+  orphanBytes: number;
+  orphanKeys: string[];
+  checkedAt: string;
+  dryRun: boolean;
+}
+
+export async function getOrphanPreview(): Promise<OrphanReport> {
+  return http.get<OrphanReport>("/api/v1/admin/storage/orphans", {
+    cache: "no-store",
+    fallbackMessage: "Quét file mồ côi thất bại.",
+  });
+}
+
+export async function cleanupOrphans(): Promise<OrphanReport> {
+  return http.post<OrphanReport>(
+    "/api/v1/admin/storage/orphans/cleanup",
+    undefined,
+    {
+      cache: "no-store",
+      fallbackMessage: "Dọn file mồ côi thất bại.",
+    }
+  );
+}
+
+export interface RecipeValidation {
+  recipeId: string;
+  hasSteps: boolean;
+  hasIngredients: boolean;
+  hasCoverImage: boolean;
+  stepsCount: number;
+  ingredientsCount: number;
+  imagesCount: number;
+  canPublish: boolean;
+  issues: string[];
+}
+
+export async function getRecipeValidation(
+  recipeId: string
+): Promise<RecipeValidation> {
+  return http.get<RecipeValidation>(
+    `/api/v1/recipes/${encodeURIComponent(recipeId)}/validation`,
+    {
+      cache: "no-store",
+      fallbackMessage: "Tải checklist validation thất bại.",
+    }
+  );
+}
+
+/* -------------------------------------------------------------------------- */
 /* Categories & search                                                        */
 /* -------------------------------------------------------------------------- */
 

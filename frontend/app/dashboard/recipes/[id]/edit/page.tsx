@@ -2,11 +2,11 @@
 
 import { use, useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { ArrowLeft, ExternalLink, RefreshCw, Save } from "lucide-react";
 import { toast } from "sonner";
 
 import { PageHeader } from "@/components/PageHeader";
+import RecipeContentEditor from "@/components/RecipeContentEditor";
 import RecipeForm, {
   mapBackendErrors,
   validateRecipeForm,
@@ -87,7 +87,6 @@ export default function EditRecipePage({
 }) {
   const { id: rawId } = use(params);
   const id = decodeURIComponent(rawId);
-  const router = useRouter();
   const token = useAuthStore((state) => state.accessToken);
 
   const [detail, setDetail] = useState<RecipeDetail | null>(null);
@@ -149,7 +148,7 @@ export default function EditRecipePage({
     setReloaded(false);
 
     try {
-      await updateRecipe(
+      const updated = await updateRecipe(
         detail.id,
         {
           title: values.title.trim(),
@@ -164,10 +163,11 @@ export default function EditRecipePage({
         },
         token ?? undefined
       );
+      // Cập nhật rowVersion mới để lần lưu sau không bị 409; giữ người dùng
+      // ở lại trang để tiếp tục thêm nguyên liệu/bước/ảnh.
+      setDetail(updated);
+      setValues(toFormValues(updated));
       toast.success("Đã lưu thay đổi.");
-      // Bản nháp không xem được ở trang public (server component không gửi cookie),
-      // nên quay về dashboard thay vì /recipes/{slug}.
-      router.push("/dashboard/recipes");
     } catch (err) {
       if (err instanceof ApiError && err.status === 409) {
         setConflict(true);
@@ -311,6 +311,16 @@ export default function EditRecipePage({
             </Button>
           </div>
         </form>
+      )}
+
+      {detail && (
+        <RecipeContentEditor
+          key={detail.rowVersion}
+          recipeId={detail.id}
+          steps={detail.steps}
+          ingredients={detail.ingredients}
+          images={detail.images}
+        />
       )}
     </div>
   );

@@ -104,15 +104,14 @@ public static class RecipeEndpoints
                 return Results.NotFound(new { code = "RECIPE_NOT_FOUND", title = "Không tìm thấy công thức.", slug });
             if (recipe.Status != RecipeStatus.Published.ToString())
             {
-                // Tác giả/Admin được xem bản nháp & lưu trữ để phục vụ trang chỉnh sửa.
-                var userId = http.User.FindFirstValue(ClaimTypes.NameIdentifier);
-                var isAdmin = http.User.IsInRole("Admin");
-                if (userId != recipe.AuthorId && !isAdmin)
-                {
+                // Draft/Archived: chỉ chủ sở hữu hoặc Admin được xem (phục vụ trang edit).
+                var userId = http.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? http.User.FindFirstValue("sub");
+                var canPreview = http.User.Identity?.IsAuthenticated == true
+                    && (http.User.IsInRole("Admin") || userId == recipe.AuthorId);
+                if (!canPreview)
                     return Results.Json(
                         new { code = "RECIPE_FORBIDDEN", title = "Bạn không có quyền xem công thức này." },
                         statusCode: 403);
-                }
             }
             return Results.Ok(recipe);
         });

@@ -6,6 +6,8 @@ public sealed record PresignedUploadResult(string UploadUrl, string ObjectKey, s
 
 public sealed record StoredFileMetadata(long Size, string ContentType);
 
+public sealed record StoredObjectInfo(string Key, long Size, DateTimeOffset? LastModified);
+
 public interface IFileStorageService
 {
     Task<string> UploadAsync(IFormFile file, string folder, CancellationToken ct = default);
@@ -39,4 +41,15 @@ public interface IFileStorageService
     Task DeleteImageVariantsAsync(string originalUrl, CancellationToken ct = default);
 
     Task EnsureBucketExistsAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// TUẦN 4 — MinIO Reliability: kiểm tra kết nối storage (dùng cho /storage/health).
+    /// Không ném exception, trả false khi disconnect/timeout.
+    /// </summary>
+    Task<bool> IsHealthyAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// TUẦN 4 — Orphaned Files: liệt kê object theo prefix để đối chiếu với DB.
+    /// </summary>
+    IAsyncEnumerable<StoredObjectInfo> ListKeysAsync(string prefix = "recipes/", CancellationToken ct = default);
 }
