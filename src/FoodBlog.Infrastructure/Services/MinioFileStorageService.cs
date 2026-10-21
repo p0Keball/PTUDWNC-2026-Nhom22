@@ -13,6 +13,7 @@ public class MinioFileStorageService : IFileStorageService
 {
     private readonly IAmazonS3 _s3Client;
     private readonly MinioOptions _options;
+    private int _bucketChecked; // 0 = chưa, 1 = đã check (cache để giảm latency mỗi upload)
 
     public MinioFileStorageService(IAmazonS3 s3Client, IOptions<MinioOptions> options)
     {
@@ -176,6 +177,23 @@ public class MinioFileStorageService : IFileStorageService
 
     public async Task EnsureBucketExistsAsync(CancellationToken ct = default)
     {
+        // TUẦN 4 — Upload Optimization: chỉ check bucket 1 lần, tránh thêm latency mỗi upload.
+        if (Interlocked.CompareExchange(ref _bucketChecked, 1, 0) == 1)
+            return;
+        try
+        {
+            await EnsureBucketExistsCoreAsync(ct);
+        }
+        catch
+        {
+            // Cho phép thử lại ở lần upload sau khi MinIO disconnect.
+            Interlocked.Exchange(ref _bucketChecked, 0);
+            throw;
+        }
+    }
+
+    private async Task EnsureBucketExistsCoreAsync(CancellationToken ct)
+    {
         await ExecuteWithRetryAsync(async () =>
         {
             var exists = await AmazonS3Util.DoesS3BucketExistV2Async(_s3Client, _options.Bucket);
@@ -198,6 +216,58 @@ public class MinioFileStorageService : IFileStorageService
         {
             // Best-effort — không fail request vì policy.
         }
+    }
+
+    /// <summary>TUẦN 4 — MinIO Reliability: health probe, không ném, timeout 5s.</summary>
+    public async Task<bool> IsHealthyAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, timeout.Token);
+            return await AmazonS3Util.DoesS3BucketExistV2Async(_s3Client, _options.Bucket);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch
+        {
+            // Graceful fallback: storage disconnect → caller trả 503 thay vì 500.
+            Interlocked.Exchange(ref _bucketChecked, 0);
+            return false;
+        }
+    }
+
+    /// <summary>TUẦN 4 — Orphaned Files: list paginated để scan orphan.</summary>
+    public async IAsyncEnumerable<StoredObjectInfo> ListKeysAsync(
+        string prefix = "recipes/",
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
+    {
+        string? continuation = null;
+        do
+        {
+            var request = new ListObjectsV2Request
+            {
+                BucketName = _options.Bucket,
+                Prefix = prefix,
+                ContinuationToken = continuation,
+                MaxKeys = 1000,
+            };
+            ListObjectsV2Response response;
+            try
+            {
+                response = await _s3Client.ListObjectsV2Async(request, ct);
+            }
+            catch
+            {
+                // Storage disconnect khi scan → dừng enumeration, caller log + trả 503.
+                yield break;
+            }
+            foreach (var obj in response.S3Objects)
+                yield return new StoredObjectInfo(obj.Key, obj.Size ?? 0, obj.LastModified);
+            continuation = response.IsTruncated == true ? response.NextContinuationToken : null;
+        } while (continuation is not null && !ct.IsCancellationRequested);
     }
 
     /// <summary>Retry tối đa 3 lần với backoff cho thao tác MinIO (FR-FILE-002).</summary>

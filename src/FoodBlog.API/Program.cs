@@ -123,5 +123,6 @@ app.MapAuthEndpoints();
 app.MapCategoryEndpoints();
 app.MapRecipeEndpoints();
 app.MapRecipeChildEndpoints();
+app.MapStorageEndpoints();
 
 app.Run();

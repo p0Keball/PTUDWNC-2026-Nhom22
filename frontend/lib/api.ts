@@ -1,3 +1,5 @@
+import { getAccessToken } from "@/lib/auth-token";
+
 export interface RecipeSummary {
   id: string;
   title: string;
@@ -110,7 +112,9 @@ export class ApiError extends Error {
 
 function authHeaders(token?: string): Record<string, string> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (token) headers["Authorization"] = `Bearer ${token}`;
+  // Token truyền trực tiếp (nếu có) được ưu tiên; nếu không lấy từ seam auth-token.
+  const accessToken = token ?? getAccessToken();
+  if (accessToken) headers["Authorization"] = `Bearer ${accessToken}`;
   return headers;
 }
 
@@ -163,12 +167,16 @@ export async function getRecipes(
 }
 
 export async function getRecipeBySlug(slug: string): Promise<RecipeDetail | null> {
+  const token = getAccessToken();
   const res = await fetch(
     `${API_BASE}/api/v1/recipes/${encodeURIComponent(slug)}`,
-    { next: { revalidate: 60 } }
+    // Có token (trang edit) thì không cache để tránh lộ bản Draft; public page vẫn cache 60s.
+    token
+      ? { headers: authHeaders(token), cache: "no-store" }
+      : { next: { revalidate: 60 } }
   );
   if (res.status === 404) return null;
-  if (!res.ok) throw new Error(`Failed to fetch recipe: ${res.status}`);
+  if (!res.ok) await throwApiError(res, "Tải công thức thất bại.");
   return res.json();
 }
 
@@ -210,10 +218,17 @@ async function handleChildResponse(res: Response, action: string) {
   if (res.status === 204) return null;
   const data = await res.json().catch(() => null);
   if (!res.ok) {
-    const detail =
-      data?.title ??
-      (data?.errors ? JSON.stringify(data.errors) : `Request failed: ${res.status}`);
-    throw new Error(`${action} thất bại: ${detail}`);
+    // Giữ nguyên ApiError (status + code + field errors) để UI xử lý 401/403/409/422.
+    const backendTitle = typeof data?.title === "string" ? data.title : null;
+    const message = backendTitle
+      ? `${action} thất bại: ${backendTitle}`
+      : `${action} thất bại (HTTP ${res.status}).`;
+    const code = typeof data?.code === "string" ? data.code : undefined;
+    const errors =
+      data?.errors && typeof data.errors === "object"
+        ? (data.errors as Record<string, string[]>)
+        : undefined;
+    throw new ApiError(res.status, message, code, errors);
   }
   return data;
 }
@@ -222,26 +237,27 @@ export const stepApi = {
   create(recipeId: string, body: { title: string; description: string; timerMinutes?: number | null; imageUrl?: string | null }): Promise<RecipeStep> {
     return fetch(`${API_BASE}/api/v1/recipes/${recipeId}/steps`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: authHeaders(),
       body: JSON.stringify(body),
     }).then((r) => handleChildResponse(r, "Thêm bước"));
   },
   update(recipeId: string, stepId: string, body: { title: string; description: string; timerMinutes?: number | null; imageUrl?: string | null }): Promise<RecipeStep> {
     return fetch(`${API_BASE}/api/v1/recipes/${recipeId}/steps/${stepId}`, {
       method: "PUT",
-      headers: { "Content-Type": "application/json" },
+      headers: authHeaders(),
       body: JSON.stringify(body),
     }).then((r) => handleChildResponse(r, "Cập nhật bước"));
   },
   remove(recipeId: string, stepId: string): Promise<void> {
     return fetch(`${API_BASE}/api/v1/recipes/${recipeId}/steps/${stepId}`, {
       method: "DELETE",
+      headers: authHeaders(),
     }).then((r) => handleChildResponse(r, "Xóa bước").then(() => undefined));
   },
   reorder(recipeId: string, items: { id: string; order: number }[]): Promise<RecipeStep[]> {
     return fetch(`${API_BASE}/api/v1/recipes/${recipeId}/steps/reorder`, {
       method: "PATCH",
-      headers: { "Content-Type": "application/json" },
+      headers: authHeaders(),
       body: JSON.stringify(items),
     }).then((r) => handleChildResponse(r, "Sắp xếp bước"));
   },
@@ -251,26 +267,27 @@ export const ingredientApi = {
   create(recipeId: string, body: { name: string; quantity?: number | null; unit?: string | null; notes?: string | null }): Promise<RecipeIngredient> {
     return fetch(`${API_BASE}/api/v1/recipes/${recipeId}/ingredients`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: authHeaders(),
       body: JSON.stringify(body),
     }).then((r) => handleChildResponse(r, "Thêm nguyên liệu"));
   },
   update(recipeId: string, ingId: string, body: { name: string; quantity?: number | null; unit?: string | null; notes?: string | null }): Promise<RecipeIngredient> {
     return fetch(`${API_BASE}/api/v1/recipes/${recipeId}/ingredients/${ingId}`, {
       method: "PUT",
-      headers: { "Content-Type": "application/json" },
+      headers: authHeaders(),
       body: JSON.stringify(body),
     }).then((r) => handleChildResponse(r, "Cập nhật nguyên liệu"));
   },
   remove(recipeId: string, ingId: string): Promise<void> {
     return fetch(`${API_BASE}/api/v1/recipes/${recipeId}/ingredients/${ingId}`, {
       method: "DELETE",
+      headers: authHeaders(),
     }).then((r) => handleChildResponse(r, "Xóa nguyên liệu").then(() => undefined));
   },
   reorder(recipeId: string, items: { id: string; order: number }[]): Promise<RecipeIngredient[]> {
     return fetch(`${API_BASE}/api/v1/recipes/${recipeId}/ingredients/reorder`, {
       method: "PATCH",
-      headers: { "Content-Type": "application/json" },
+      headers: authHeaders(),
       body: JSON.stringify(items),
     }).then((r) => handleChildResponse(r, "Sắp xếp nguyên liệu"));
   },
@@ -287,7 +304,7 @@ export const imageApi = {
   async presign(recipeId: string, file: File): Promise<PresignResult> {
     const res = await fetch(`${API_BASE}/api/v1/recipes/${recipeId}/images/presign`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: authHeaders(),
       body: JSON.stringify({ fileName: file.name, contentType: file.type, fileSize: file.size }),
     });
     return handleChildResponse(res, "Xin presigned URL");
@@ -295,7 +312,7 @@ export const imageApi = {
   async confirm(recipeId: string, objectKey: string, altText?: string | null): Promise<RecipeImage> {
     const res = await fetch(`${API_BASE}/api/v1/recipes/${recipeId}/images/confirm`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: authHeaders(),
       body: JSON.stringify({ objectKey, altText: altText ?? null }),
     });
     return handleChildResponse(res, "Xác nhận ảnh");
@@ -303,12 +320,14 @@ export const imageApi = {
   async setPrimary(recipeId: string, imgId: string): Promise<RecipeImage> {
     const res = await fetch(`${API_BASE}/api/v1/recipes/${recipeId}/images/${imgId}/primary`, {
       method: "PATCH",
+      headers: authHeaders(),
     });
     return handleChildResponse(res, "Đặt ảnh chính");
   },
   async remove(recipeId: string, imgId: string): Promise<void> {
     const res = await fetch(`${API_BASE}/api/v1/recipes/${recipeId}/images/${imgId}`, {
       method: "DELETE",
+      headers: authHeaders(),
     });
     await handleChildResponse(res, "Xóa ảnh");
   },
@@ -355,6 +374,69 @@ export async function uploadRecipeImage(
   const presigned = await imageApi.presign(recipeId, file);
   await putFileToPresignedUrl(presigned.uploadUrl, file, onProgress, signal);
   return imageApi.confirm(recipeId, presigned.objectKey, altText);
+}
+
+// ---- TUẦN 4 (Trần Gia Huy): MinIO Reliability + Orphan + Validation ----
+
+export interface StorageHealth {
+  status: "healthy" | "unhealthy";
+  checkedAt: string;
+}
+
+export async function getStorageHealth(signal?: AbortSignal): Promise<StorageHealth> {
+  const res = await fetch(`${API_BASE}/api/v1/storage/health`, {
+    cache: "no-store",
+    signal,
+  });
+  // 503 vẫn có JSON {status: unhealthy} — parse để FE hiện banner.
+  const data = await res.json().catch(() => null);
+  if (data?.status) return data as StorageHealth;
+  return { status: res.ok ? "healthy" : "unhealthy", checkedAt: new Date().toISOString() };
+}
+
+export interface OrphanReport {
+  totalObjects: number;
+  referencedObjects: number;
+  orphanCount: number;
+  orphanBytes: number;
+  orphanKeys: string[];
+  checkedAt: string;
+  dryRun: boolean;
+}
+
+export async function getOrphanPreview(): Promise<OrphanReport> {
+  const res = await fetch(`${API_BASE}/api/v1/admin/storage/orphans`, { cache: "no-store" });
+  if (!res.ok) await throwApiError(res, "Quét file mồ côi thất bại.");
+  return res.json();
+}
+
+export async function cleanupOrphans(): Promise<OrphanReport> {
+  const res = await fetch(`${API_BASE}/api/v1/admin/storage/orphans/cleanup`, {
+    method: "POST",
+    cache: "no-store",
+  });
+  if (!res.ok) await throwApiError(res, "Dọn file mồ côi thất bại.");
+  return res.json();
+}
+
+export interface RecipeValidation {
+  recipeId: string;
+  hasSteps: boolean;
+  hasIngredients: boolean;
+  hasCoverImage: boolean;
+  stepsCount: number;
+  ingredientsCount: number;
+  imagesCount: number;
+  canPublish: boolean;
+  issues: string[];
+}
+
+export async function getRecipeValidation(recipeId: string): Promise<RecipeValidation> {
+  const res = await fetch(`${API_BASE}/api/v1/recipes/${recipeId}/validation`, {
+    cache: "no-store",
+  });
+  if (!res.ok) await throwApiError(res, "Tải checklist validation thất bại.");
+  return res.json();
 }
 
 export interface CategoryDetail {
