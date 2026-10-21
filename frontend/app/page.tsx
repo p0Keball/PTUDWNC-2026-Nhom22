@@ -28,12 +28,26 @@ export default async function Home({
             {data.totalCount} công thức đã xuất bản
           </p>
         </div>
-        <Link
-          href="/recipes/create"
-          className="shrink-0 rounded-full bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white"
-        >
-          Tạo công thức
-        </Link>
+        <div className="flex shrink-0 items-center gap-2">
+          <Link
+            href="/login"
+            className="rounded-full border border-zinc-200 px-4 py-2 text-sm font-medium hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
+          >
+            Đăng nhập
+          </Link>
+          <Link
+            href="/profile"
+            className="rounded-full bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white"
+          >
+            Hồ sơ
+          </Link>
+          <Link
+            href="/recipes/create"
+            className="hidden rounded-full bg-orange-500 px-4 py-2 text-sm font-medium text-white hover:bg-orange-600 sm:inline-block"
+          >
+            Tạo công thức
+          </Link>
+        </div>
       </div>
 
       {data.items.length === 0 ? (

@@ -40,6 +40,9 @@ public static class DependencyInjection
         });
 
         services.AddSingleton(TimeProvider.System);
+        services.Configure<EmailOptions>(config.GetSection(EmailOptions.SectionName));
+        services.Configure<GoogleOAuthOptions>(config.GetSection(GoogleOAuthOptions.SectionName));
+        services.AddScoped<IEmailSender, SmtpEmailSender>();
         services.AddFileStorage(config);
         return services;
     }

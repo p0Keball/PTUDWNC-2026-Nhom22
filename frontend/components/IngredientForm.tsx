@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect } from "react";
+import { useFieldArray, useForm, useWatch } from "react-hook-form";
 import { useEffect, useState } from "react";
 import { useFieldArray, useForm } from "react-hook-form";
 import { z } from "zod";
@@ -112,6 +114,8 @@ export default function IngredientForm({ recipeId = null, defaultIngredients = [
     },
   });
 
+  const { fields, append, remove, update } = useFieldArray({ control, name: "items" });
+  const items = useWatch({ control, name: "items" });
   const { fields, append, remove, update, move } = useFieldArray({ control, name: "items" });
   const items = watch("items");
 

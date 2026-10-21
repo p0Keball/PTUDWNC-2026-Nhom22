@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useFieldArray, useForm } from "react-hook-form";
+import { useFieldArray, useForm, useWatch } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
@@ -90,7 +90,6 @@ export default function StepForm({ recipeId = null, defaultSteps = [], onChange,
     control,
     register,
     handleSubmit,
-    watch,
     setValue,
     getValues,
     formState: { errors },
@@ -111,7 +110,7 @@ export default function StepForm({ recipeId = null, defaultSteps = [], onChange,
   });
 
   const { fields, append, remove, update, move } = useFieldArray({ control, name: "items" });
-  const items = watch("items");
+  const items = useWatch({ control, name: "items" });
 
   // TUẦN 4 — Form Validation: phát hiện trùng tiêu đề (normalize trim+lower).
   const duplicateTitles = (() => {

@@ -68,6 +68,10 @@ export default function DashboardRecipesPage() {
   }, []);
 
   useEffect(() => {
+    const timer = window.setTimeout(() => {
+      void load(tab, 1);
+    }, 0);
+    return () => window.clearTimeout(timer);
     // Fetch danh sách khi đổi tab — setState nằm trong async load(), không phải render loop.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     load(tab, 1);
