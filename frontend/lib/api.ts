@@ -263,8 +263,31 @@ export async function getMyRecipes(
 }
 
 /**
+ * Lấy chi tiết công thức của chính tác giả (kể cả bản nháp/lưu trữ).
+ * Dùng cho route /dashboard/recipes/[id]/edit.
+ */
+export async function getMyRecipeById(
+  id: string,
+  token?: string | null
+): Promise<RecipeDetail | null> {
+  try {
+    return await http.get<RecipeDetail>(
+      `/api/v1/recipes/mine/${encodeURIComponent(id)}`,
+      {
+        token,
+        cache: "no-store",
+        fallbackMessage: "Không tải được công thức.",
+      }
+    );
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) return null;
+    throw error;
+  }
+}
+
+/**
  * Tìm công thức trong danh sách của chính tác giả.
- * Dùng cho route /dashboard/recipes/[id]/edit khi chỉ có id.
+ * Giữ lại để tương thích URL cũ chỉ có slug.
  */
 export async function findMyRecipeById(
   id: string,

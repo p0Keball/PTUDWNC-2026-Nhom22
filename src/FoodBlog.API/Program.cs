@@ -26,9 +26,12 @@ builder.Services.AddCors(options =>
     {
         var origins = builder.Configuration.GetSection("Cors:Origins").Get<string[]>()
             ?? ["http://localhost:3000"];
+        // Frontend gửi credentials: "include" (cookie auth của Identity),
+        // nên bắt buộc phải AllowCredentials với origin cụ thể.
         policy.WithOrigins(origins)
             .AllowAnyHeader()
-            .AllowAnyMethod();
+            .AllowAnyMethod()
+            .AllowCredentials();
     });
 });
 builder.Services.AddRateLimiter(options =>
@@ -99,6 +102,38 @@ builder.Services.Configure<PasswordHasherOptions>(options =>
 {
     options.CompatibilityMode = PasswordHasherCompatibilityMode.IdentityV3;
     options.IterationCount = 100_000;
+});
+// API trả 401/403 thay vì redirect HTML về /Account/Login khi endpoint
+// yêu cầu đăng nhập (Identity cookie mặc định redirect).
+builder.Services.ConfigureApplicationCookie(options =>
+{
+    options.Cookie.HttpOnly = true;
+    options.Cookie.SameSite = SameSiteMode.Lax;
+    options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
+
+    options.Events.OnRedirectToLogin = context =>
+    {
+        if (context.Request.Path.StartsWithSegments("/api"))
+        {
+            context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+            return Task.CompletedTask;
+        }
+
+        context.Response.Redirect(context.RedirectUri);
+        return Task.CompletedTask;
+    };
+
+    options.Events.OnRedirectToAccessDenied = context =>
+    {
+        if (context.Request.Path.StartsWithSegments("/api"))
+        {
+            context.Response.StatusCode = StatusCodes.Status403Forbidden;
+            return Task.CompletedTask;
+        }
+
+        context.Response.Redirect(context.RedirectUri);
+        return Task.CompletedTask;
+    };
 });
 
 var app = builder.Build();

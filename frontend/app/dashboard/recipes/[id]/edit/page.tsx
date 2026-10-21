@@ -20,6 +20,7 @@ import {
   ApiError,
   findMyRecipeById,
   getCategories,
+  getMyRecipeById,
   getRecipeBySlug,
   updateRecipe,
   type Category,
@@ -48,23 +49,35 @@ function toFormValues(detail: RecipeDetail): RecipeFormValues {
   };
 }
 
+function isLookupMiss(err: unknown) {
+  return (
+    err instanceof ApiError && [401, 403, 404].includes(err.status)
+  );
+}
+
 async function resolveRecipe(id: string, token: string | null) {
+  // 1. Route SRS dùng [id]: lấy chi tiết có auth (draft/archived cũng được).
+  try {
+    const mine = await getMyRecipeById(id, token);
+    if (mine) return mine;
+  } catch (err) {
+    if (!isLookupMiss(err)) throw err;
+  }
+
+  // 2. Tương thích URL cũ dùng slug: thử trang public trước.
   try {
     const direct = await getRecipeBySlug(id);
     if (direct) return direct;
   } catch (err) {
-    if (
-      !(err instanceof ApiError) ||
-      (err.status !== 403 && err.status !== 404)
-    ) {
+    if (!(err instanceof ApiError) || (err.status !== 403 && err.status !== 404)) {
       throw err;
     }
   }
 
-  // Route SRS dùng [id]; hỗ trợ cả id lẫn slug.
+  // 3. Slug cũ: tìm trong danh sách của mình rồi lấy chi tiết theo id.
   const summary = await findMyRecipeById(id, token ?? undefined);
   if (!summary) return null;
-  return getRecipeBySlug(summary.slug);
+  return getMyRecipeById(summary.id, token);
 }
 
 export default function EditRecipePage({
@@ -136,7 +149,7 @@ export default function EditRecipePage({
     setReloaded(false);
 
     try {
-      const updated = await updateRecipe(
+      await updateRecipe(
         detail.id,
         {
           title: values.title.trim(),
@@ -152,7 +165,9 @@ export default function EditRecipePage({
         token ?? undefined
       );
       toast.success("Đã lưu thay đổi.");
-      router.push(`/recipes/${encodeURIComponent(updated.slug)}`);
+      // Bản nháp không xem được ở trang public (server component không gửi cookie),
+      // nên quay về dashboard thay vì /recipes/{slug}.
+      router.push("/dashboard/recipes");
     } catch (err) {
       if (err instanceof ApiError && err.status === 409) {
         setConflict(true);
@@ -173,7 +188,7 @@ export default function EditRecipePage({
     setReloading(true);
     setServerError(null);
     try {
-      const fresh = await getRecipeBySlug(detail?.slug ?? id);
+      const fresh = await getMyRecipeById(detail?.id ?? id, token);
       if (!fresh) {
         setNotFound(true);
         return;
@@ -226,7 +241,7 @@ export default function EditRecipePage({
                 Quay lại
               </Link>
             </Button>
-            {detail && (
+            {detail && detail.status === "Published" && (
               <Button asChild variant="ghost">
                 <Link href={`/recipes/${encodeURIComponent(detail.slug)}`}>
                   <ExternalLink />

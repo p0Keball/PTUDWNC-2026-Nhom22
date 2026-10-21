@@ -131,7 +131,7 @@ export default function DashboardRecipesPage() {
     return (
       <div className="flex flex-wrap gap-2 pt-2">
         <Button asChild variant="outline" size="sm" disabled={busy}>
-          <Link href={`/dashboard/recipes/${encodeURIComponent(recipe.slug)}/edit`}>
+          <Link href={`/dashboard/recipes/${encodeURIComponent(recipe.id)}/edit`}>
             <Edit3 />
             Sửa
           </Link>

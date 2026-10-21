@@ -4,7 +4,7 @@ import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
 import { getErrorMessage } from "@/lib/errors";
-import { http } from "@/lib/http";
+import { ApiError, http } from "@/lib/http";
 
 /* -------------------------------------------------------------------------- */
 /* Types theo SRS FR-AUTH                                                     */
@@ -277,9 +277,12 @@ export const useAuthStore = create<AuthState>()(
           const user = normalizeUser(profile);
           set({ user, status: "authenticated", error: null });
           return user;
-        } catch {
-          // Cookie-auth có thể vẫn hợp lệ dù chưa có accessToken; không xóa session ngay.
-          if (token) get().clearSession();
+        } catch (error) {
+          // 401 = cookie cũng đã hết hạn → xóa session cũ trong localStorage.
+          // Lỗi mạng/5xx thì giữ session để người dùng thử lại.
+          if (token || (error instanceof ApiError && error.status === 401)) {
+            get().clearSession();
+          }
           return null;
         }
       },

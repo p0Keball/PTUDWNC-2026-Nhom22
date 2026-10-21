@@ -79,7 +79,7 @@ export default function CreateRecipePage() {
         token
       );
       toast.success("Đã tạo công thức nháp. Hãy thêm nguyên liệu và các bước.");
-      router.push(`/dashboard/recipes/${encodeURIComponent(created.slug)}/edit`);
+      router.push(`/dashboard/recipes/${encodeURIComponent(created.id)}/edit`);
     } catch (err) {
       const fieldErrors = getFieldErrors(err);
       if (Object.keys(fieldErrors).length > 0) {

@@ -30,9 +30,9 @@ export function DashboardAuthGate({
     if (!hasHydrated || checkedCookie.current) return;
     checkedCookie.current = true;
 
-    // Hỗ trợ cookie-auth hiện tại: nếu chưa có token nhưng cookie còn hiệu lực,
-    // /auth/me sẽ trả profile và store chuyển sang authenticated.
-    if (!accessToken && status !== "authenticated") {
+    // Hỗ trợ cookie-auth hiện tại: luôn xác thực lại với /auth/me khi không có
+    // accessToken, kể cả khi localStorage còn user cũ (cookie có thể đã hết hạn).
+    if (!accessToken) {
       void fetchMe();
     }
   }, [accessToken, fetchMe, hasHydrated, status]);

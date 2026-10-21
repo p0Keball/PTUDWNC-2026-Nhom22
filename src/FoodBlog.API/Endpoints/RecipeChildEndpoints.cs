@@ -5,8 +5,8 @@ using FoodBlog.Application.Features.Recipes;
 using FoodBlog.Application.Interfaces;
 using FoodBlog.Domain.Entities;
 using FoodBlog.Infrastructure.Persistence;
+using Microsoft.AspNetCore.OutputCaching;
 using Microsoft.EntityFrameworkCore;
-using static FoodBlog.API.Endpoints.RecipeEndpoints;
 
 namespace FoodBlog.API.Endpoints;
 
@@ -28,6 +28,10 @@ public static class RecipeChildEndpoints
 
     public static void MapRecipeChildEndpoints(this WebApplication app)
     {
+        // IOutputCacheStore là singleton; lấy một lần để các endpoint con
+        // cùng evict tag "recipes" sau khi ghi dữ liệu.
+        var cache = app.Services.GetRequiredService<IOutputCacheStore>();
+
         var group = app.MapGroup("/api/v1/recipes/{id:guid}");
 
         group.MapPost("/steps", async (Guid id, CreateStepRequest req, FoodBlogDbContext db,
@@ -46,7 +50,7 @@ public static class RecipeChildEndpoints
                 req.TimerMinutes, string.IsNullOrWhiteSpace(req.ImageUrl) ? null : req.ImageUrl.Trim());
             db.RecipeSteps.Add(step);
             await db.SaveChangesAsync(ct);
-            EvictListCache();
+            await cache.EvictByTagAsync("recipes", ct);
             return Results.Created($"/api/v1/recipes/{id}/steps/{step.Id}",
                 new RecipeStepDto(step.Id, step.StepNumber, step.Title, step.Description, step.TimerMinutes, step.ImageUrl));
         });
@@ -63,7 +67,7 @@ public static class RecipeChildEndpoints
             step.Update(req.Title.Trim(), req.Description ?? string.Empty,
                 req.TimerMinutes, string.IsNullOrWhiteSpace(req.ImageUrl) ? null : req.ImageUrl.Trim());
             await db.SaveChangesAsync(ct);
-            EvictListCache();
+            await cache.EvictByTagAsync("recipes", ct);
             return Results.Ok(new RecipeStepDto(step.Id, step.StepNumber, step.Title, step.Description, step.TimerMinutes, step.ImageUrl));
         });
 
@@ -77,7 +81,7 @@ public static class RecipeChildEndpoints
             db.RecipeSteps.Remove(step);
             await db.SaveChangesAsync(ct);
             await RenumberStepsAsync(db, id);
-            EvictListCache();
+            await cache.EvictByTagAsync("recipes", ct);
             return Results.NoContent();
         });
 
@@ -101,7 +105,7 @@ public static class RecipeChildEndpoints
             for (var i = 0; i < orderedIds.Count; i++)
                 byId[orderedIds[i]].Renumber(i + 1);
             await db.SaveChangesAsync(ct);
-            EvictListCache();
+            await cache.EvictByTagAsync("recipes", ct);
             var result = await db.RecipeSteps.Where(s => s.RecipeId == id).OrderBy(s => s.StepNumber)
                 .Select(s => new RecipeStepDto(s.Id, s.StepNumber, s.Title, s.Description, s.TimerMinutes, s.ImageUrl))
                 .ToListAsync(ct);
@@ -124,7 +128,7 @@ public static class RecipeChildEndpoints
                 string.IsNullOrWhiteSpace(req.Notes) ? null : req.Notes.Trim(), order);
             db.RecipeIngredients.Add(ingredient);
             await db.SaveChangesAsync(ct);
-            EvictListCache();
+            await cache.EvictByTagAsync("recipes", ct);
             return Results.Created($"/api/v1/recipes/{id}/ingredients/{ingredient.Id}",
                 new RecipeIngredientDto(ingredient.Id, ingredient.Name, ingredient.Quantity, ingredient.Unit, ingredient.Notes, ingredient.OrderIndex));
         });
@@ -142,7 +146,7 @@ public static class RecipeChildEndpoints
                 string.IsNullOrWhiteSpace(req.Unit) ? null : req.Unit.Trim(),
                 string.IsNullOrWhiteSpace(req.Notes) ? null : req.Notes.Trim());
             await db.SaveChangesAsync(ct);
-            EvictListCache();
+            await cache.EvictByTagAsync("recipes", ct);
             return Results.Ok(new RecipeIngredientDto(ingredient.Id, ingredient.Name, ingredient.Quantity, ingredient.Unit, ingredient.Notes, ingredient.OrderIndex));
         });
 
@@ -156,7 +160,7 @@ public static class RecipeChildEndpoints
             db.RecipeIngredients.Remove(ingredient);
             await db.SaveChangesAsync(ct);
             await RenumberIngredientsAsync(db, id);
-            EvictListCache();
+            await cache.EvictByTagAsync("recipes", ct);
             return Results.NoContent();
         });
 
@@ -179,7 +183,7 @@ public static class RecipeChildEndpoints
             for (var i = 0; i < orderedIds.Count; i++)
                 byId[orderedIds[i]].SetOrder(i);
             await db.SaveChangesAsync(ct);
-            EvictListCache();
+            await cache.EvictByTagAsync("recipes", ct);
             var result = await db.RecipeIngredients.Where(i => i.RecipeId == id).OrderBy(i => i.OrderIndex)
                 .Select(i => new RecipeIngredientDto(i.Id, i.Name, i.Quantity, i.Unit, i.Notes, i.OrderIndex))
                 .ToListAsync(ct);
@@ -230,7 +234,7 @@ public static class RecipeChildEndpoints
                 order == 0, order);
             db.RecipeImages.Add(image);
             await db.SaveChangesAsync(ct);
-            EvictListCache();
+            await cache.EvictByTagAsync("recipes", ct);
             // FR-JOB-002: đẩy job tạo thumbnail nền (fire-and-forget).
             jobs.EnqueueThumbnail(image.Id);
             return Results.Created($"/api/v1/recipes/{id}/images/{image.Id}", ToImage(image));
@@ -253,7 +257,7 @@ public static class RecipeChildEndpoints
                 order == 0, order);
             db.RecipeImages.Add(image);
             await db.SaveChangesAsync(ct);
-            EvictListCache();
+            await cache.EvictByTagAsync("recipes", ct);
             return Results.Created($"/api/v1/recipes/{id}/images/{image.Id}", ToImage(image));
         });
 
@@ -333,7 +337,7 @@ public static class RecipeChildEndpoints
                 order == 0, order);
             db.RecipeImages.Add(image);
             await db.SaveChangesAsync(ct);
-            EvictListCache();
+            await cache.EvictByTagAsync("recipes", ct);
             // FR-JOB-002: đẩy job tạo thumbnail nền (fire-and-forget).
             jobs.EnqueueThumbnail(image.Id);
             return Results.Created($"/api/v1/recipes/{id}/images/{image.Id}", ToImage(image));
@@ -350,7 +354,7 @@ public static class RecipeChildEndpoints
             foreach (var s in siblings)
                 s.SetPrimary(s.Id == imgId);
             await db.SaveChangesAsync(ct);
-            EvictListCache();
+            await cache.EvictByTagAsync("recipes", ct);
             return Results.Ok(ToImage(image));
         });
 
@@ -377,7 +381,7 @@ public static class RecipeChildEndpoints
                 }
             }
             await RenumberImagesAsync(db, id);
-            EvictListCache();
+            await cache.EvictByTagAsync("recipes", ct);
             return Results.NoContent();
         });
     }
@@ -417,14 +421,14 @@ public static class RecipeChildEndpoints
     }
 
     /// <summary>
-    /// Resource-Based Authorization (NFR-SEC-006): Author chỉ thao tác recipe của mình,
-    /// Admin bypass. Khi request ẩn danh (JWT của Long chưa đấu nối) tạm cho qua để
-    /// tương thích, khi có JWT sẽ enforce và trả 403 RECIPE_FORBIDDEN.
+    /// Resource-Based Authorization (NFR-SEC-006): bắt buộc đăng nhập; Author chỉ
+    /// thao tác recipe của mình, Admin được bypass.
     /// </summary>
     private static IResult? ForbidIfNotOwner(string authorId, ClaimsPrincipal user)
     {
         if (user.Identity?.IsAuthenticated != true)
-            return null;
+            return Unauthorized();
+
         var userId = user.FindFirstValue(ClaimTypes.NameIdentifier);
         if (userId != authorId && !user.IsInRole("Admin"))
             return Results.Json(new { code = "RECIPE_FORBIDDEN", title = "Bạn không có quyền thao tác trên công thức này." }, statusCode: 403);
@@ -435,13 +439,19 @@ public static class RecipeChildEndpoints
         FoodBlogDbContext db, Guid recipeId, ClaimsPrincipal user, CancellationToken ct)
     {
         if (user.Identity?.IsAuthenticated != true)
-            return null;
+            return Unauthorized();
+
         var authorId = await db.Recipes.Where(r => r.Id == recipeId)
             .Select(r => r.AuthorId).FirstOrDefaultAsync(ct);
         if (authorId is null)
             return null; // Recipe không tồn tại — handler sẽ trả 404.
         return ForbidIfNotOwner(authorId, user);
     }
+
+    private static IResult Unauthorized() =>
+        Results.Json(
+            new { code = "AUTH_UNAUTHORIZED", title = "Vui lòng đăng nhập để thực hiện thao tác này." },
+            statusCode: 401);
 
     private static RecipeImageDto ToImage(RecipeImage i) => new(i.Id, i.OriginalUrl, i.MediumUrl, i.ThumbnailUrl,
         i.AltText, i.IsPrimary, i.OrderIndex,

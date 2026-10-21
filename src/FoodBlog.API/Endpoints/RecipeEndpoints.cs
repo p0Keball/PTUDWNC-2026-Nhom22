@@ -10,8 +10,6 @@ using FoodBlog.Infrastructure.Persistence;
 using Microsoft.AspNetCore.OutputCaching;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Caching.Memory;
-using Microsoft.Extensions.Primitives;
 using NpgsqlTypes;
 
 namespace FoodBlog.API.Endpoints;
@@ -22,8 +20,6 @@ public record UpdateRecipeRequest(string Title, string Description, string Instr
 
 public static class RecipeEndpoints
 {
-    private static CancellationTokenSource _listCacheCts = new();
-
     public static void MapRecipeEndpoints(this WebApplication app)
     {
         var group = app.MapGroup("/api/v1/recipes")
@@ -81,6 +77,16 @@ public static class RecipeEndpoints
             {
                 return Results.UnprocessableEntity(new { title = "Validation failed", errors = ToErrors(ex) });
             }
+        });
+
+        // Dashboard cần chi tiết đầy đủ (steps/ingredients/images) của công thức
+        // thuộc chính mình, kể cả khi đang là bản nháp.
+        group.MapGet("/mine/{id:guid}", async (Guid id, ISender sender) =>
+        {
+            var recipe = await sender.Send(new GetMyRecipeByIdQuery(id));
+            return recipe is null
+                ? Results.NotFound(new { code = "RECIPE_NOT_FOUND", title = "Không tìm thấy công thức.", id })
+                : Results.Ok(recipe);
         });
 
         group.MapGet("/{slug}", async (string slug, ISender sender, HttpContext http) =>
@@ -162,13 +168,6 @@ public static class RecipeEndpoints
             await store.EvictByTagAsync("recipes", ct);
             return Results.NoContent();
         }).RequireRateLimiting("recipe-write");
-    }
-
-    public static void EvictListCache()
-    {
-        var old = Interlocked.Exchange(ref _listCacheCts, new CancellationTokenSource());
-        old.Cancel();
-        old.Dispose();
     }
 
     private static Dictionary<string, string[]> ToErrors(FluentValidation.ValidationException ex) =>
