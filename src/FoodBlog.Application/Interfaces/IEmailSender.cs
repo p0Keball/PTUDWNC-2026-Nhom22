@@ -6,4 +6,10 @@ public interface IEmailSender
         string recipientEmail,
         string displayName,
         CancellationToken cancellationToken = default);
+
+    Task SendPasswordResetEmailAsync(
+        string recipientEmail,
+        string displayName,
+        string resetUrl,
+        CancellationToken cancellationToken = default);
 }

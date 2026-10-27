@@ -1,9 +1,5 @@
 import type { ProblemDetails } from "@/types/problem";
 
-/**
- * Base URL của Backend API (.NET 10 Minimal APIs).
- * Dev: http://localhost:5000 — Prod: https://api.culinaryblog.com
- */
 export const API_BASE_URL = (
   process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5000"
 ).replace(/\/$/, "");
@@ -34,10 +30,7 @@ export class ApiError extends Error {
 }
 
 function isJsonResponse(response: Response) {
-  return response.headers
-    .get("content-type")
-    ?.toLowerCase()
-    .includes("application/json");
+  return response.headers.get("content-type")?.toLowerCase().includes("json") ?? false;
 }
 
 async function readProblem(response: Response): Promise<ProblemDetails | null> {
@@ -50,7 +43,6 @@ async function readProblem(response: Response): Promise<ProblemDetails | null> {
   }
 }
 
-/** Chuyển response lỗi RFC 7807 thành ApiError thống nhất toàn app. */
 export async function toApiError(
   response: Response,
   fallbackMessage = `Yêu cầu thất bại (${response.status}).`
@@ -58,11 +50,11 @@ export async function toApiError(
   const problem = await readProblem(response);
   return new ApiError({
     status: response.status,
-    message: problem?.title || problem?.detail || fallbackMessage,
+    message: problem?.title ?? problem?.detail ?? fallbackMessage,
     code: problem?.code ?? undefined,
-    detail: problem?.detail ?? null,
+    detail: problem?.detail,
     errors: problem?.errors,
-    traceId: problem?.traceId,
+    traceId: problem?.traceId ?? undefined,
   });
 }
 
@@ -71,66 +63,37 @@ export interface RequestOptions extends Omit<RequestInit, "body" | "headers"> {
   token?: string | null;
   headers?: HeadersInit;
   fallbackMessage?: string;
-  /** Next.js fetch cache options. */
   next?: { revalidate?: number | false; tags?: string[] };
 }
 
-/**
- * Wrapper fetch dùng chung:
- * - Tự gắn Content-Type JSON (trừ FormData).
- * - Gắn Bearer token khi có.
- * - Gửi cookie (credentials: include) để tương thích cookie auth hiện tại.
- * - Parse RFC 7807 problem+json thành ApiError.
- * - Hỗ trợ 204 No Content.
- */
-export async function request<T>(
-  path: string,
-  options: RequestOptions = {}
-): Promise<T> {
-  const {
-    body,
-    token,
-    headers,
-    fallbackMessage,
-    credentials,
-    ...init
-  } = options;
-
+export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  const { body, token, headers, fallbackMessage, credentials, ...init } = options;
   const finalHeaders = new Headers(headers);
   const isFormData = body instanceof FormData;
 
-  if (body !== undefined && !isFormData && !finalHeaders.has("Content-Type")) {
+  if (body !== undefined && !isFormData && !finalHeaders.has("Content-Type"))
     finalHeaders.set("Content-Type", "application/json");
-  }
-  if (token) finalHeaders.set("Authorization", `Bearer ${token}`);
+  if (token) finalHeaders.set("Authorization", "Bearer " + token);
 
-  const url = /^https?:\/\//i.test(path) ? path : `${API_BASE_URL}${path}`;
+  const response = await fetch(
+    /^https?:\/\//i.test(path) ? path : `${API_BASE_URL}${path}`,
+    {
+      ...init,
+      headers: finalHeaders,
+      credentials: credentials ?? "include",
+      body:
+        body === undefined
+          ? undefined
+          : isFormData
+            ? body
+            : JSON.stringify(body),
+    }
+  );
 
-  const response = await fetch(url, {
-    ...init,
-    headers: finalHeaders,
-    credentials: credentials ?? "include",
-    body:
-      body === undefined
-        ? undefined
-        : isFormData
-          ? (body as FormData)
-          : JSON.stringify(body),
-  });
-
-  if (!response.ok) {
-    throw await toApiError(response, fallbackMessage);
-  }
-
+  if (!response.ok) throw await toApiError(response, fallbackMessage);
   if (response.status === 204) return undefined as T;
-
   const text = await response.text();
-  if (!text) return undefined as T;
-
-  if (isJsonResponse(response)) {
-    return JSON.parse(text) as T;
-  }
-  return text as T;
+  return text && isJsonResponse(response) ? (JSON.parse(text) as T) : (text as T);
 }
 
 export const http = {

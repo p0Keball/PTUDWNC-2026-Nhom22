@@ -10,6 +10,7 @@ using FoodBlog.Application.Features.Auth.Commands.Logout;
 using FoodBlog.Application.Features.Auth.Commands.RefreshToken;
 using FoodBlog.Application.Features.Auth.Commands.UpdateMe;
 using FoodBlog.Application.Features.Auth.Queries.GetMe;
+using FoodBlog.Application.Interfaces;
 using FoodBlog.Domain.Entities;
 using FoodBlog.Infrastructure.Persistence;
 using MediatR;
@@ -36,6 +37,9 @@ public static class AuthEndpoints
         group.MapPost("/google", GoogleLogin);
         group.MapPost("/refresh", Refresh);
         group.MapPost("/logout", Logout).RequireAuthorization();
+        group.MapPost("/change-password", ChangePassword).RequireAuthorization();
+        group.MapPost("/forgot-password", ForgotPassword);
+        group.MapPost("/reset-password", ResetPassword);
 
         group.MapGet("/me", GetMe)
             .RequireAuthorization()
@@ -292,6 +296,60 @@ public static class AuthEndpoints
         }
     }
 
+    private static async Task<IResult> ChangePassword(
+        ChangePasswordRequest request,
+        ClaimsPrincipal principal,
+        UserManager<ApplicationUser> users,
+        SignInManager<ApplicationUser> signInManager)
+    {
+        var userId = principal.FindFirstValue(ClaimTypes.NameIdentifier) ?? principal.FindFirstValue("sub");
+        var user = string.IsNullOrWhiteSpace(userId) ? null : await users.FindByIdAsync(userId);
+        if (user is null) return Results.Unauthorized();
+        var result = await users.ChangePasswordAsync(user, request.CurrentPassword, request.NewPassword);
+        if (!result.Succeeded)
+            return Results.UnprocessableEntity(new
+            {
+                title = "Đổi mật khẩu không thành công.",
+                errors = result.Errors.GroupBy(e => e.Code).ToDictionary(g => g.Key, g => g.Select(e => e.Description).ToArray())
+            });
+        await signInManager.RefreshSignInAsync(user);
+        return Results.NoContent();
+    }
+
+    private static async Task<IResult> ForgotPassword(
+        ForgotPasswordRequest request,
+        UserManager<ApplicationUser> users,
+        IEmailSender emailSender,
+        IConfiguration configuration,
+        CancellationToken ct)
+    {
+        var user = await users.FindByEmailAsync(request.Email.Trim());
+        if (user is not null && user.IsActive && !string.IsNullOrWhiteSpace(user.Email))
+        {
+            var token = await users.GeneratePasswordResetTokenAsync(user);
+            var baseUrl = configuration["Frontend:BaseUrl"]?.TrimEnd('/') ?? "http://localhost:3000";
+            var resetUrl = $"{baseUrl}/auth/reset-password?email={Uri.EscapeDataString(user.Email)}&token={Uri.EscapeDataString(token)}";
+            await emailSender.SendPasswordResetEmailAsync(user.Email, user.DisplayName, resetUrl, ct);
+        }
+        return Results.Ok(new { message = "Nếu email tồn tại, hướng dẫn đặt lại mật khẩu đã được gửi." });
+    }
+
+    private static async Task<IResult> ResetPassword(
+        ResetPasswordRequest request,
+        UserManager<ApplicationUser> users)
+    {
+        var user = await users.FindByEmailAsync(request.Email.Trim());
+        if (user is null) return Results.BadRequest(new { title = "Liên kết đặt lại mật khẩu không hợp lệ." });
+        var result = await users.ResetPasswordAsync(user, request.Token, request.NewPassword);
+        return result.Succeeded
+            ? Results.NoContent()
+            : Results.UnprocessableEntity(new
+            {
+                title = "Không thể đặt lại mật khẩu.",
+                errors = result.Errors.GroupBy(e => e.Code).ToDictionary(g => g.Key, g => g.Select(e => e.Description).ToArray())
+            });
+    }
+
     private static async Task<string> CreateRefreshTokenAsync(
         ApplicationUser user, FoodBlogDbContext db, HttpContext httpContext, CancellationToken ct)
     {
@@ -315,6 +373,9 @@ public static class AuthEndpoints
     private sealed record RegisterRequest(string DisplayName, string Email, string Password);
     private sealed record LoginRequest(string Email, string Password);
     private sealed record RefreshRequest(string RefreshToken);
+    private sealed record ChangePasswordRequest(string CurrentPassword, string NewPassword);
+    private sealed record ForgotPasswordRequest(string Email);
+    private sealed record ResetPasswordRequest(string Email, string Token, string NewPassword);
     private sealed record ProfileResponse(string Id, string Email, string DisplayName, string? AvatarUrl, string? Bio);
     private sealed record AuthResponse(ProfileResponse User, string RefreshToken);
 }

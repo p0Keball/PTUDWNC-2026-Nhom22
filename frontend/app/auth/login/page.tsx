@@ -111,6 +111,9 @@ export default function LoginPage() {
                 Đăng ký
               </Link>
             </p>
+            <Link href="/auth/forgot-password" className="text-center text-sm text-primary hover:underline">
+              Quên mật khẩu?
+            </Link>
           </form>
         </CardContent>
       </Card>

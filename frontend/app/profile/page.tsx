@@ -4,14 +4,12 @@ import { useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Avatar from "@/components/Avatar";
-import { ApiError, getMyProfile, updateMyProfile, type UserProfile } from "@/lib/api";
-
-function getToken() {
-  return typeof window === "undefined" ? null : localStorage.getItem("accessToken");
-}
+import { ApiError, changePassword, getMyProfile, updateMyProfile, type UserProfile } from "@/lib/api";
+import { useAuthStore } from "@/store/auth-store";
 
 export default function ProfilePage() {
   const router = useRouter();
+  const token = useAuthStore((state) => state.accessToken);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [displayName, setDisplayName] = useState("");
   const [avatarUrl, setAvatarUrl] = useState("");
@@ -20,11 +18,13 @@ export default function ProfilePage() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
 
   useEffect(() => {
-    const token = getToken();
     if (!token) {
-      router.replace("/login");
+      router.replace("/auth/login");
       return;
     }
     getMyProfile(token)
@@ -37,16 +37,15 @@ export default function ProfilePage() {
       .catch((err) => {
         if (err instanceof ApiError && err.status === 401) {
           localStorage.removeItem("accessToken");
-          router.replace("/login");
+          router.replace("/auth/login");
         } else setError("Không tải được hồ sơ.");
       })
       .finally(() => setLoading(false));
-  }, [router]);
+  }, [router, token]);
 
   const save = async (event: FormEvent) => {
     event.preventDefault();
-    const token = getToken();
-    if (!token) return router.replace("/login");
+    if (!token) return router.replace("/auth/login");
     setSaving(true);
     setError(null);
     setMessage(null);
@@ -58,6 +57,21 @@ export default function ProfilePage() {
       setError(err instanceof ApiError ? err.message : "Cập nhật hồ sơ thất bại.");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const savePassword = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!token || newPassword !== confirmPassword) {
+      setError("Mật khẩu xác nhận không khớp.");
+      return;
+    }
+    try {
+      await changePassword(currentPassword, newPassword, token);
+      setCurrentPassword(""); setNewPassword(""); setConfirmPassword("");
+      setMessage("Đã đổi mật khẩu.");
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Đổi mật khẩu thất bại.");
     }
   };
 
@@ -83,6 +97,13 @@ export default function ProfilePage() {
             {error && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</p>}
             {message && <p role="status" className="rounded-xl bg-emerald-50 p-3 text-sm text-emerald-700">{message}</p>}
             <button disabled={saving} className="rounded-xl bg-orange-500 px-6 py-3 font-semibold text-white hover:bg-orange-600 disabled:opacity-60">{saving ? "Đang lưu..." : "Lưu thay đổi"}</button>
+          </form>
+          <form onSubmit={savePassword} className="mt-10 space-y-4 border-t pt-6">
+            <h2 className="text-lg font-semibold">Đổi mật khẩu</h2>
+            <input required type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} placeholder="Mật khẩu hiện tại" className="w-full rounded-xl border px-4 py-3" />
+            <input required minLength={8} type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="Mật khẩu mới" className="w-full rounded-xl border px-4 py-3" />
+            <input required minLength={8} type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="Xác nhận mật khẩu mới" className="w-full rounded-xl border px-4 py-3" />
+            <button className="rounded-xl border px-6 py-3 font-semibold hover:bg-zinc-50">Đổi mật khẩu</button>
           </form>
         </div>
       </div>
