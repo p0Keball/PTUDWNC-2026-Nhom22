@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ArrowRight, BookOpen, ChefHat, Clock3, Sparkles } from "lucide-react";
 
+import CategorySidebar from "@/components/CategorySidebar";
 import { Container } from "@/components/Container";
 import { EmptyState } from "@/components/EmptyState";
 import RecipeCard from "@/components/RecipeCard";
@@ -100,60 +101,51 @@ export default async function HomePage() {
       </section>
 
       <Container className="py-10">
-        {categories.length > 0 && (
-          <div className="flex flex-col gap-3">
-            <h2 className="text-lg font-semibold">Danh mục nổi bật</h2>
-            <div className="flex flex-wrap gap-2">
-              {categories.slice(0, 8).map((category) => (
-                <Button key={category.id} asChild variant="outline" size="sm">
-                  <Link href={`/recipes?categoryId=${category.id}`}>
-                    {category.name}
-                    <Badge variant="secondary" className="ml-1">
-                      {category.recipeCount}
-                    </Badge>
-                  </Link>
-                </Button>
+        <div className="grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_300px]">
+          <div className="flex min-w-0 flex-col gap-4">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <h2 className="text-2xl font-bold tracking-tight">
+                  Công thức mới nhất
+                </h2>
+                <p className="text-sm text-muted-foreground">
+                  Những món ăn vừa được cộng đồng chia sẻ.
+                </p>
+              </div>
+              <Button asChild variant="ghost">
+                <Link href="/recipes">
+                  Xem tất cả
+                  <ArrowRight />
+                </Link>
+              </Button>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              {recipes.items.map((recipe) => (
+                <RecipeCard key={recipe.id} recipe={recipe} />
               ))}
             </div>
+
+            {recipes.items.length === 0 && (
+              <EmptyState
+                title="Chưa tải được công thức"
+                description="Backend có thể chưa khởi động. Hãy thử lại sau hoặc mở trang danh sách công thức."
+                action={
+                  <Button asChild variant="outline">
+                    <Link href="/recipes">Mở trang công thức</Link>
+                  </Button>
+                }
+              />
+            )}
           </div>
-        )}
 
-        <div className="mt-10 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <h2 className="text-2xl font-bold tracking-tight">
-              Công thức mới nhất
-            </h2>
-            <p className="text-sm text-muted-foreground">
-              Những món ăn vừa được cộng đồng chia sẻ.
-            </p>
-          </div>
-          <Button asChild variant="ghost">
-            <Link href="/recipes">
-              Xem tất cả
-              <ArrowRight />
-            </Link>
-          </Button>
-        </div>
-
-        <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {recipes.items.map((recipe) => (
-            <RecipeCard key={recipe.id} recipe={recipe} />
-          ))}
-        </div>
-
-        {recipes.items.length === 0 && (
-          <div className="mt-4">
-            <EmptyState
-              title="Chưa tải được công thức"
-              description="Backend có thể chưa khởi động. Hãy thử lại sau hoặc mở trang danh sách công thức."
-              action={
-                <Button asChild variant="outline">
-                  <Link href="/recipes">Mở trang công thức</Link>
-                </Button>
-              }
+          <aside className="lg:sticky lg:top-20 lg:self-start">
+            <CategorySidebar
+              categories={categories}
+              totalCount={recipes.totalCount}
             />
-          </div>
-        )}
+          </aside>
+        </div>
       </Container>
     </>
   );

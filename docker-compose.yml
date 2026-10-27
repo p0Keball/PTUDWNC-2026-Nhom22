@@ -41,6 +41,7 @@ services:
     restart: unless-stopped
     environment:
       ACCEPT_EULA: "Y"
+      SEQ_FIRSTRUN_ADMINPASSWORD: "Foodblog123!"
     ports:
       - "1880:80"
       - "5341:5341"

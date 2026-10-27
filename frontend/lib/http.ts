@@ -2,10 +2,10 @@ import type { ProblemDetails } from "@/types/problem";
 
 /**
  * Base URL của Backend API (.NET 10 Minimal APIs).
- * Dev: http://localhost:5000 — Prod: https://api.culinaryblog.com
+ * Dev: http://localhost:5298 — Prod: https://api.culinaryblog.com
  */
 export const API_BASE_URL = (
-  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5000"
+  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5298"
 ).replace(/\/$/, "");
 
 export class ApiError extends Error {

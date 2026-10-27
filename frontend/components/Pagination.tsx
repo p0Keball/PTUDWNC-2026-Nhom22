@@ -9,8 +9,10 @@ import { cn } from "@/lib/utils";
 interface PaginationProps {
   page: number;
   totalPages: number;
-  /** Chế độ server: truyền hàm tạo href cho từng trang. */
-  getHref?: (page: number) => string;
+  /** Chế độ server: base path để tạo link cho từng trang. */
+  basePath?: string;
+  /** Query params được giữ lại khi tạo link phân trang. */
+  query?: Record<string, string | number | null | undefined>;
   /** Chế độ client: callback đổi trang. */
   onPageChange?: (page: number) => void;
   /** Tương thích API cũ. */
@@ -55,7 +57,8 @@ function getPageItems(current: number, total: number): PageItem[] {
 export default function Pagination({
   page,
   totalPages,
-  getHref,
+  basePath,
+  query,
   onPageChange,
   prevHref,
   nextHref,
@@ -65,12 +68,27 @@ export default function Pagination({
 }: PaginationProps) {
   if (totalPages <= 1) return null;
 
-  const hasPageLinks = Boolean(getHref || onPageChange);
+  const hasPageLinks = Boolean(basePath || onPageChange);
   const previousDisabled = disabled || page <= 1;
   const nextDisabled = disabled || page >= totalPages;
 
+  function buildHref(targetPage: number) {
+    if (!basePath) return "#";
+
+    const params = new URLSearchParams();
+    Object.entries(query ?? {}).forEach(([key, value]) => {
+      if (value !== null && value !== undefined && value !== "") {
+        params.set(key, String(value));
+      }
+    });
+    if (targetPage > 1) params.set("page", String(targetPage));
+
+    const search = params.toString();
+    return search ? `${basePath}?${search}` : basePath;
+  }
+
   function renderPrevious() {
-    if (getHref) {
+    if (basePath) {
       return previousDisabled ? (
         <span
           className={cn(
@@ -83,7 +101,7 @@ export default function Pagination({
         </span>
       ) : (
         <Link
-          href={getHref(page - 1)}
+          href={buildHref(page - 1)}
           className={buttonVariants({ variant: "outline", size: "sm" })}
         >
           <ChevronLeft />
@@ -117,7 +135,7 @@ export default function Pagination({
   }
 
   function renderNext() {
-    if (getHref) {
+    if (basePath) {
       return nextDisabled ? (
         <span
           className={cn(
@@ -130,7 +148,7 @@ export default function Pagination({
         </span>
       ) : (
         <Link
-          href={getHref(page + 1)}
+          href={buildHref(page + 1)}
           className={buttonVariants({ variant: "outline", size: "sm" })}
         >
           Sau
@@ -189,11 +207,11 @@ export default function Pagination({
               }
 
               const isCurrent = item === page;
-              if (getHref) {
+              if (basePath) {
                 return (
                   <Link
                     key={item}
-                    href={getHref(item)}
+                    href={buildHref(item)}
                     aria-current={isCurrent ? "page" : undefined}
                     className={cn(
                       buttonVariants({
