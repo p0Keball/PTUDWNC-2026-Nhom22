@@ -99,18 +99,6 @@ export default async function RecipesPage({ searchParams }: RecipesPageProps) {
   const totalPages = Math.max(Math.ceil(data.totalCount / data.pageSize), 1);
   const hasFilters = Object.values(filters).some(Boolean);
 
-  function hrefForPage(nextPage: number) {
-    const next = new URLSearchParams();
-    if (filters.categoryId) next.set("categoryId", filters.categoryId);
-    if (filters.difficulty) next.set("difficulty", String(filters.difficulty));
-    if (filters.maxCookTime)
-      next.set("maxCookTime", String(filters.maxCookTime));
-    if (filters.sort) next.set("sort", filters.sort);
-    if (nextPage > 1) next.set("page", String(nextPage));
-    const query = next.toString();
-    return query ? `/recipes?${query}` : "/recipes";
-  }
-
   return (
     <Container>
       <PageHeader
@@ -228,7 +216,13 @@ export default async function RecipesPage({ searchParams }: RecipesPageProps) {
       <Pagination
         page={data.page}
         totalPages={totalPages}
-        getHref={hrefForPage}
+        basePath="/recipes"
+        query={{
+          categoryId: filters.categoryId,
+          difficulty: filters.difficulty,
+          maxCookTime: filters.maxCookTime,
+          sort: filters.sort,
+        }}
       />
     </Container>
   );
