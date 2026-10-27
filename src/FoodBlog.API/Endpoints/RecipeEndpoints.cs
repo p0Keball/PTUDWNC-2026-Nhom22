@@ -12,8 +12,6 @@ using FoodBlog.Infrastructure.Persistence;
 using Microsoft.AspNetCore.OutputCaching;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Caching.Memory;
-using Microsoft.Extensions.Primitives;
 using NpgsqlTypes;
 
 namespace FoodBlog.API.Endpoints;
@@ -24,13 +22,12 @@ public record UpdateRecipeRequest(string Title, string Description, string Instr
 
 public static class RecipeEndpoints
 {
-    private static CancellationTokenSource _listCacheCts = new();
-
     public static void MapRecipeEndpoints(this WebApplication app, ApiVersionSet apiVersionSet)
     {
         var group = app.MapGroup("/api/v{version:apiVersion}/recipes")
             .WithApiVersionSet(apiVersionSet)
             .HasApiVersion(new ApiVersion(1, 0))
+            .WithTags("Recipes")
             .RequireRateLimiting("general");
 
         group.MapGet("/", async (ISender sender,
@@ -86,7 +83,17 @@ public static class RecipeEndpoints
             }
         }).RequireAuthorization();
 
-        group.MapGet("/{slug}", async (string slug, ISender sender, ClaimsPrincipal user) =>
+        // Dashboard cần chi tiết đầy đủ (steps/ingredients/images) của công thức
+        // thuộc chính mình, kể cả khi đang là bản nháp.
+        group.MapGet("/mine/{id:guid}", async (Guid id, ISender sender) =>
+        {
+            var recipe = await sender.Send(new GetMyRecipeByIdQuery(id));
+            return recipe is null
+                ? Results.NotFound(new { code = "RECIPE_NOT_FOUND", title = "Không tìm thấy công thức.", id })
+                : Results.Ok(recipe);
+        });
+
+        group.MapGet("/{slug}", async (string slug, ISender sender, HttpContext http) =>
         {
             RecipeDetailDto? recipe;
             try
@@ -102,11 +109,13 @@ public static class RecipeEndpoints
             if (recipe.Status != RecipeStatus.Published.ToString())
             {
                 // Draft/Archived: chỉ chủ sở hữu hoặc Admin được xem (phục vụ trang edit).
-                var userId = user.FindFirstValue(ClaimTypes.NameIdentifier) ?? user.FindFirstValue("sub");
-                var canPreview = user.Identity?.IsAuthenticated == true
-                    && (user.IsInRole("Admin") || userId == recipe.AuthorId);
+                var userId = http.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? http.User.FindFirstValue("sub");
+                var canPreview = http.User.Identity?.IsAuthenticated == true
+                    && (http.User.IsInRole("Admin") || userId == recipe.AuthorId);
                 if (!canPreview)
-                    return Results.Json(new { code = "RECIPE_FORBIDDEN", title = "Bạn không có quyền xem công thức này." }, statusCode: 403);
+                    return Results.Json(
+                        new { code = "RECIPE_FORBIDDEN", title = "Bạn không có quyền xem công thức này." },
+                        statusCode: 403);
             }
             return Results.Ok(recipe);
         });
@@ -123,7 +132,7 @@ public static class RecipeEndpoints
             {
                 return Results.UnprocessableEntity(new { title = "Validation failed", errors = ToErrors(ex) });
             }
-        }).RequireAuthorization();
+        }).RequireAuthorization().RequireRateLimiting("recipe-write");
 
         group.MapPut("/{id:guid}", async (Guid id, UpdateRecipeRequest req, ISender sender, IOutputCacheStore store, CancellationToken ct) =>
         {
@@ -133,42 +142,35 @@ public static class RecipeEndpoints
                 req.Nutrition), ct);
             await store.EvictByTagAsync("recipes", ct);
             return Results.Ok(result);
-        }).RequireAuthorization();
+        }).RequireAuthorization().RequireRateLimiting("recipe-write");
 
         group.MapPatch("/{id:guid}/publish", async (Guid id, ISender sender, IOutputCacheStore store, CancellationToken ct) =>
         {
             var result = await sender.Send(new PublishRecipeCommand(id), ct);
             await store.EvictByTagAsync("recipes", ct);
             return Results.Ok(result);
-        }).RequireAuthorization();
+        }).RequireAuthorization().RequireRateLimiting("recipe-write");
 
         group.MapPatch("/{id:guid}/unpublish", async (Guid id, ISender sender, IOutputCacheStore store, CancellationToken ct) =>
         {
             var result = await sender.Send(new UnpublishRecipeCommand(id), ct);
             await store.EvictByTagAsync("recipes", ct);
             return Results.Ok(result);
-        }).RequireAuthorization();
+        }).RequireAuthorization().RequireRateLimiting("recipe-write");
 
         group.MapPatch("/{id:guid}/archive", async (Guid id, ISender sender, IOutputCacheStore store, CancellationToken ct) =>
         {
             var result = await sender.Send(new ArchiveRecipeCommand(id), ct);
             await store.EvictByTagAsync("recipes", ct);
             return Results.Ok(result);
-        }).RequireAuthorization();
+        }).RequireAuthorization().RequireRateLimiting("recipe-write");
 
         group.MapDelete("/{id:guid}", async (Guid id, ISender sender, IOutputCacheStore store, CancellationToken ct) =>
         {
             await sender.Send(new DeleteRecipeCommand(id), ct);
             await store.EvictByTagAsync("recipes", ct);
             return Results.NoContent();
-        }).RequireAuthorization();
-    }
-
-    public static void EvictListCache()
-    {
-        var old = Interlocked.Exchange(ref _listCacheCts, new CancellationTokenSource());
-        old.Cancel();
-        old.Dispose();
+        }).RequireAuthorization().RequireRateLimiting("recipe-write");
     }
 
     private static Dictionary<string, string[]> ToErrors(FluentValidation.ValidationException ex) =>

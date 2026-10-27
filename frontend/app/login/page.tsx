@@ -41,7 +41,8 @@ export default function LoginPage() {
     setSubmitting(true);
     try {
       const result = await login(email.trim(), password);
-      saveAuth(result.accessToken, result.refreshToken);
+      if (result.accessToken) saveAuth(result.accessToken, result.refreshToken);
+      else localStorage.setItem("refreshToken", result.refreshToken);
       router.push("/profile");
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Đăng nhập thất bại.");

@@ -56,6 +56,8 @@ builder.Services.AddCors(options =>
         if (origins is null || origins.Length == 0 || origins.Any(string.IsNullOrWhiteSpace))
             throw new InvalidOperationException("Cors:Origins must contain at least one trusted origin.");
 
+        // Frontend gửi credentials: "include" (cookie auth của Identity),
+        // nên bắt buộc phải AllowCredentials với origin cụ thể.
         policy.WithOrigins(origins)
             .AllowAnyHeader()
             .AllowAnyMethod()
@@ -97,6 +99,12 @@ builder.Services.AddRateLimiter(options =>
     options.AddFixedWindowLimiter("upload", limiter =>
     {
         limiter.PermitLimit = 5;
+        limiter.Window = TimeSpan.FromMinutes(1);
+        limiter.QueueLimit = 0;
+    });
+    options.AddFixedWindowLimiter("recipe-write", limiter =>
+    {
+        limiter.PermitLimit = 30;
         limiter.Window = TimeSpan.FromMinutes(1);
         limiter.QueueLimit = 0;
     });
@@ -165,7 +173,6 @@ builder.Services.Configure<PasswordHasherOptions>(options =>
     options.CompatibilityMode = PasswordHasherCompatibilityMode.IdentityV3;
     options.IterationCount = 100_000;
 });
-
 var app = builder.Build();
 
 app.UseForwardedHeaders();
@@ -203,10 +210,6 @@ app.MapAuthEndpoints(apiVersionSet);
 app.MapCategoryEndpoints(apiVersionSet);
 app.MapRecipeEndpoints(apiVersionSet);
 app.MapRecipeChildEndpoints(apiVersionSet);
-app.MapAuthEndpoints();
-app.MapCategoryEndpoints();
-app.MapRecipeEndpoints();
-app.MapRecipeChildEndpoints();
 app.MapStorageEndpoints();
 
 app.Run();

@@ -26,7 +26,7 @@ export default function GoogleCallbackPage() {
       .then((result) => {
         sessionStorage.removeItem("google_pkce_verifier");
         sessionStorage.removeItem("google_oauth_state");
-        localStorage.setItem("accessToken", result.accessToken);
+        if (result.accessToken) localStorage.setItem("accessToken", result.accessToken);
         localStorage.setItem("refreshToken", result.refreshToken);
         router.replace("/profile");
       })

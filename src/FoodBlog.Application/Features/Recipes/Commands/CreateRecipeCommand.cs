@@ -4,6 +4,7 @@ using FoodBlog.Application.Features.Recipes;
 using FoodBlog.Domain.Common;
 using FoodBlog.Domain.Entities;
 using FoodBlog.Domain.Enums;
+using FoodBlog.Domain.Exceptions;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
@@ -37,12 +38,16 @@ public sealed class CreateRecipeCommandValidator : AbstractValidator<CreateRecip
     }
 }
 
-public sealed class CreateRecipeCommandHandler(IFoodBlogDbContext db, ICurrentUserService currentUser) : IRequestHandler<CreateRecipeCommand, RecipeDetailDto>
+public sealed class CreateRecipeCommandHandler(IFoodBlogDbContext db, ICurrentUserService currentUser)
+    : IRequestHandler<CreateRecipeCommand, RecipeDetailDto>
 {
     public async Task<RecipeDetailDto> Handle(CreateRecipeCommand req, CancellationToken ct)
     {
+        if (!currentUser.IsAuthenticated || currentUser.UserId is null)
+            throw new RecipeUnauthorizedException();
+
         if (!await db.Categories.AnyAsync(c => c.Id == req.CategoryId, ct))
-            throw new ValidationException([new FluentValidation.Results.ValidationFailure("CategoryId", "Danh mục không tồn tại.")]);
+            throw new FluentValidation.ValidationException([new FluentValidation.Results.ValidationFailure("CategoryId", "Danh mục không tồn tại.")]);
 
         var recipe = new Recipe
         {
@@ -56,10 +61,7 @@ public sealed class CreateRecipeCommandHandler(IFoodBlogDbContext db, ICurrentUs
             Servings = req.Servings,
             Difficulty = (Difficulty)req.Difficulty,
             Status = RecipeStatus.Draft,
-            // Gán đúng chủ sở hữu khi có JWT; fallback user đầu tiên cho luồng dev chưa đăng nhập.
             AuthorId = currentUser.UserId
-                ?? await db.Users.Select(u => u.Id).FirstOrDefaultAsync(ct)
-                ?? string.Empty
         };
 
         db.Recipes.Add(recipe);
