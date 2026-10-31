@@ -18,6 +18,9 @@ src/FoodBlog.API/           # Program.cs + Endpoints/ (Category, Recipe, RecipeC
                             #   + Middleware/ (ExceptionHandling, problem+json) + appsettings.json
 frontend/                   # Next.js: home + /recipes/[slug] + RecipeCard/Skeleton + lib/api.ts
                             #   (chưa có trang categories/admin)
+tests/FoodBlog.Tests/       # xUnit: integration test Steps/Ingredients/Images + storage/thumbnail/
+                            #   orphan (+ MinIO thật optional)
+docs/                       # Tài liệu bàn giao: child-data, file-storage, testing, handover
 README.md                   # Phân công TV1–TV4
 KEHOACH.md / HOC.md         # Ghi chú cá nhân (đang gitignore, chỉ nằm trên máy)
 CHECKLIST.md                # Checklist endpoints + FAILURE fixes (TV2, đã check xong)
@@ -64,6 +67,20 @@ dotnet run --project src/FoodBlog.API --urls "http://localhost:5000"
 - Tài khoản seed: admin `admin@foodblog.local` / `Foodblog123!` (+ 5 authors, pass giống nhau)
 - Connection string: `src/FoodBlog.API/appsettings.json` → `ConnectionStrings:Default`
 
+## 3b. Chạy test tự động (xUnit)
+
+```bash
+dotnet test tests/FoodBlog.Tests/FoodBlog.Tests.csproj   # 67 test, không cần Docker
+```
+
+- Test dùng `WebApplicationFactory<Program>` + EF Core **InMemory** + fake MinIO/queue nên chạy
+  độc lập, không cần Postgres/MinIO đang bật.
+- Phủ: Steps/Ingredients/Images (HTTP), validate upload (MIME/size/extension), thumbnail variants,
+  ImageSharp resizer, `ImageJobWorker`, orphan cleanup, `MinioFileStorageService`.
+- Test MinIO thật (optional, tự skip nếu `localhost:9000` không lên):
+  `dotnet test tests/FoodBlog.Tests/FoodBlog.Tests.csproj --filter Category=RequiresMinIO`
+- Chi tiết: `docs/testing.md`. Kết quả test nằm trong `TestResults/` (đã gitignore).
+
 ## 4. Endpoints hiện có (base `http://localhost:5000`)
 
 > Lỗi trả về chuẩn RFC 7807 `application/problem+json`
@@ -88,7 +105,7 @@ dotnet run --project src/FoodBlog.API --urls "http://localhost:5000"
 | POST | `/api/v1/recipes` | luôn tạo Draft → 201 |
 | PUT | `/api/v1/recipes/{id}` | can JWT (401 thieu token, 403 khac chu); body bat buoc `rowVersion` (base64); cu -> 409 `RECIPE_CONCURRENCY_CONFLICT`; sai validate -> 422; chi tiet: `scripts/verify-recipe-update.ps1` |
 | PATCH | `/api/v1/recipes/{id}/publish` | cần ≥1 step, không thì 422 |
-| PATCH | `/api/v1/recipes/{id}/unpublish`, `/archive` | đổi trạng thái |
+| PATCH | `/api/v1/recipes/{id}/unpublish`, `/archive`, `/unarchive` | đổi trạng thái (Archived → Draft khi khôi phục) |
 | DELETE | `/api/v1/recipes/{id}` | **xóa mềm** (`IsDeleted=true`), row còn trong DB → 204 |
 
 ### Steps / Ingredients / Images của recipe
@@ -96,7 +113,8 @@ dotnet run --project src/FoodBlog.API --urls "http://localhost:5000"
 |---|---|---|
 | POST/PUT/DELETE | `/api/v1/recipes/{id}/steps[/{stepId}]` | xóa giữa → tự renumber 1,2,3…; field `TimerMinutes` |
 | POST/PUT/DELETE | `/api/v1/recipes/{id}/ingredients[/{ingId}]` | field `OrderIndex` |
-| POST | `/api/v1/recipes/{id}/images` `{originalUrl, altText?}` | URL string (MinIO SDK để sau); ảnh đầu `IsPrimary`; trả `thumbnailStatus: pending/ready` |
+| POST | `/api/v1/recipes/{id}/images` (multipart `file`) | Upload trực tiếp; validate MIME/magic bytes/5MB; ảnh đầu `IsPrimary`; trả `thumbnailStatus: pending/ready` |
+| POST | `/api/v1/recipes/{id}/images/presign` + `/images/confirm` | Luồng presigned MinIO (FE tự fallback multipart nếu PUT lỗi) |
 | PATCH | `/api/v1/recipes/{id}/images/{imgId}/primary` | đặt ảnh chính |
 | DELETE | `/api/v1/recipes/{id}/images/{imgId}` | xóa primary → tự gán ảnh tiếp theo |
 
@@ -128,8 +146,9 @@ docker exec foodblog-postgres psql -U foodblog -d foodblog -c \
 
 ```bash
 cd frontend && npm run dev     # http://localhost:3000
-# Đã có: home + Recipe List/Cards/Skeletons + /recipes/[slug] (nối API qua lib/api.ts).
-# Chưa có: trang categories, /admin/*, /search, auth UI.
+# Đã có: home, /recipes, /recipes/[slug], /search, auth, /dashboard/*,
+#        /admin/users và /admin/logs (role Admin).
+# Kiểm tra chất lượng: npm run typecheck && npm run lint && npm run build
 ```
 
 ## 7. Tạo migration mới (khi đổi Entity/Config)
@@ -152,3 +171,59 @@ dotnet ef migrations add TenMigration \
 | MinIO pull `access denied` | đã fix: dùng image `quay.io/...` trong compose |
 | Seq `Restarting` | nợ kỹ thuật Mac ARM, không chặn các service khác |
 | `bin/`, `obj/` hiện lung tung | bình thường — đã gitignore, đừng commit |
+
+## 9. Quản trị, nhật ký & trạng thái công thức (bổ sung Tuần 5)
+
+> Mục này thay thế các ghi chú cũ "chưa có /admin/*": frontend đã có khu vực quản trị.
+
+### 9.1. Trạng thái công thức
+
+| Method | Endpoint | Trạng thái nguồn → đích |
+|---|---|---|
+| PATCH | `/api/v1/recipes/{id}/publish` | Draft → Published (kiểm tra checklist) |
+| PATCH | `/api/v1/recipes/{id}/unpublish` | Published → Draft |
+| PATCH | `/api/v1/recipes/{id}/archive` | Draft/Published → Archived |
+| PATCH | `/api/v1/recipes/{id}/unarchive` | Archived → Draft |
+| DELETE | `/api/v1/recipes/{id}` | Xóa mềm |
+
+Chuyển trạng thái sai trả `422 RECIPE_STATUS_TRANSITION_INVALID`.
+UI: `/dashboard/recipes` và `/dashboard/recipes/[id]/edit`.
+
+### 9.2. Quản trị người dùng (role Admin)
+
+| Method | Endpoint | Ghi chú |
+|---|---|---|
+| GET | `/api/v1/admin/users?page=&pageSize=&search=&role=&status=&sort=` | Kèm thống kê tổng/đang hoạt động/Admin/Author |
+| PATCH | `/api/v1/admin/users/{id}/status` | Body `{ "isActive": false }`; thu hồi refresh token khi khóa |
+| PATCH | `/api/v1/admin/users/{id}/role` | Body `{ "role": "Admin" }` hoặc `{ "role": "Author" }` |
+| GET | `/api/v1/admin/audit-logs?page=&pageSize=&action=&entityType=&userId=&search=&from=&to=` | Nhật ký hệ thống |
+
+- Không thể tự khóa tài khoản hoặc tự đổi role của chính mình.
+- UI: `/admin/users` và `/admin/logs` (được bảo vệ bởi `AdminAuthGate`).
+
+### 9.3. Nhật ký & Serilog
+
+- Audit trail lưu bảng `AuditLogs` (migration `20261028104044_AddAuditLogs`).
+- Serilog: Console + File `logs/foodblog-YYYYMMDD.log` + Seq `http://localhost:5341`.
+- Mỗi request có `CorrelationId`, `UserId`, `UserAgent`; lỗi RFC 7807 trả thêm
+  `traceId` và `correlationId`.
+- Xem log trên Seq UI: `http://localhost:1880` (hoặc `http://localhost:5341` nếu
+  map trực tiếp), lọc theo `CorrelationId` khi người dùng báo lỗi.
+
+### 9.4. Kiểm thử
+
+```bash
+# Backend (lần đầu ~10-15 phút do khởi động test host; các lần sau nhanh hơn)
+dotnet test tests/FoodBlog.Tests/FoodBlog.Tests.csproj
+
+# Frontend
+cd frontend
+npm run typecheck
+npm run lint
+npm run build
+```
+
+Integration test dùng `TestAuthHandler` (user Author đã seed) và tắt toàn bộ
+hosted service (Hangfire/worker) để `DisposeAsync` không bị treo.
+
+Chi tiết đầy đủ: [`docs/admin-and-logging.md`](docs/admin-and-logging.md).

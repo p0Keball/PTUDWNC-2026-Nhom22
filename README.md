@@ -51,3 +51,79 @@
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Authentication Integration Tests**<br>• Test Register.<br>• Test Login.<br>• Test Refresh Token.<br>• Test Lockout.<br>• Test Google OAuth.<br><br>**Handover**<br>• Hướng dẫn sử dụng Hangfire Dashboard.<br>• Hướng dẫn Health Checks.<br>• Hướng dẫn Serilog.<br>• Hướng dẫn OpenTelemetry.<br><br>**Documentation**<br>• Tài liệu Authentication.<br>• Tài liệu Observability. | **Category Tests**<br>• Integration Test Category CRUD.<br><br>**Search Tests**<br>• Integration Test Search API.<br>• Test Filter + Sort + Pagination combinations.<br><br>**Handover**<br>• Handover Sitemap Cron Job.<br>• Handover PostgreSQL Full-Text Search.<br><br>**Documentation**<br>• Tài liệu Category.<br>• Tài liệu Search. | **Recipe Integration Tests**<br>• Test Create Recipe.<br>• Test Update Concurrency.<br>• Test Publish Validation.<br>• Test Resource Authorization.<br><br>**Performance Testing**<br>• Load Test Public Endpoints.<br>• Theo dõi p95.<br>• Theo dõi p99.<br><br>**Documentation**<br>• Tài liệu Recipe Core. | **Child Data Tests**<br>• Integration Test Steps.<br>• Integration Test Ingredients.<br>• Integration Test Image Upload.<br><br>**File Storage Tests**<br>• Test MinIO.<br>• Test Thumbnail Job.<br><br>**Handover**<br>• Handover File Storage Service.<br>• Handover các Reusable UI Components.<br><br>**Documentation**<br>• Tài liệu Child Data.<br>• Tài liệu File Storage. |
 
+
+---
+
+# BÀN GIAO TUẦN 5 — TRẦN GIA HUY (CHILD DATA & FILE STORAGE)
+
+## Tài liệu kỹ thuật
+
+| Tài liệu | Nội dung |
+|---|---|
+| `docs/README.md` | Mục lục + bản đồ mã nguồn mảng Child Data & File Storage |
+| `docs/child-data.md` | API, validation, renumber của Step / Ingredient / Image; component FE |
+| `docs/file-storage.md` | Kiến trúc MinIO, presigned upload, thumbnail, cleanup, orphan scan, fallback |
+| `docs/testing.md` | Phạm vi test, cách chạy, test MinIO thật |
+| `docs/handover-file-storage.md` | Checklist bàn giao File Storage Service |
+| `docs/handover-ui-components.md` | Cách dùng lại ImageUploader, RecipeGallery, IngredientForm, StepForm |
+
+## Kiểm thử
+
+```bash
+# Toàn bộ test (không cần PostgreSQL/MinIO)
+dotnet test tests/FoodBlog.Tests/FoodBlog.Tests.csproj
+
+# Chỉ test MinIO thật (sau docker compose up -d minio)
+dotnet test tests/FoodBlog.Tests/FoodBlog.Tests.csproj --filter "Category=RequiresMinIO"
+```
+
+Đã có **67 test** cho:
+
+- Integration Test Steps / Ingredients / Image Upload (gọi HTTP thật qua `WebApplicationFactory`).
+- Image validation: MIME, magic bytes JPEG/PNG/WebP/AVIF, giới hạn 5MB.
+- Thumbnail job 300×300 và 800×600 (ImageSharp thật).
+- MinIO: upload / presign / delete biến thể / graceful fallback.
+- Orphaned files: dry-run + cleanup, không xóa file còn tham chiếu hoặc file mới.
+
+---
+
+# BỔ SUNG TUẦN 5 — TRẦN GIA HUY (ADMIN, LOGGING & TRẠNG THÁI CÔNG THỨC)
+
+Chi tiết kỹ thuật: [`docs/admin-and-logging.md`](docs/admin-and-logging.md).
+
+## Trạng thái công thức
+
+- `Draft → Published → Archived`; `Archived → Draft` qua `PATCH /api/v1/recipes/{id}/unarchive`.
+- Chặn chuyển trạng thái sai bằng `RecipeStatusTransitionException` → HTTP 422
+  `RECIPE_STATUS_TRANSITION_INVALID`.
+- Trang `/dashboard/recipes` và `/dashboard/recipes/[id]/edit` có đầy đủ nút
+  Xuất bản / Gỡ xuất bản / Lưu trữ / Khôi phục / Xóa, kèm hộp thoại xác nhận.
+- Publish vẫn kiểm tra checklist (tối thiểu 1 bước thực hiện).
+
+## Upload ảnh
+
+- Giữ presigned MinIO, bổ sung fallback `multipart/form-data` qua `POST /images`
+  khi presigned PUT thất bại (CORS/hết hạn).
+- Rate limit riêng `upload` (5 request/phút/IP) cho endpoint upload.
+
+## Quản trị người dùng & nhật ký
+
+| Method | Endpoint | Quyền |
+|---|---|---|
+| GET | `/api/v1/admin/users` | Admin |
+| PATCH | `/api/v1/admin/users/{id}/status` | Admin |
+| PATCH | `/api/v1/admin/users/{id}/role` | Admin |
+| GET | `/api/v1/admin/audit-logs` | Admin |
+
+- UI: `/admin/users` (thống kê, lọc, phân trang, đổi role, bật/tắt tài khoản) và
+  `/admin/logs` (lọc hành động/đối tượng/ngày, xem IP & Correlation ID).
+- Audit trail lưu bảng `AuditLogs` (migration `20261028104044_AddAuditLogs`).
+- Serilog ghi Console + File + Seq, enrich `CorrelationId`/`UserId`; lỗi RFC 7807
+  trả thêm `traceId` và `correlationId`.
+
+## Lệnh kiểm tra
+
+```bash
+dotnet test tests/FoodBlog.Tests/FoodBlog.Tests.csproj
+cd frontend && npm run typecheck && npm run lint && npm run build
+```

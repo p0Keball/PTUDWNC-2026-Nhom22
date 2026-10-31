@@ -2,9 +2,21 @@
 
 import { use, useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
-import { ArrowLeft, ExternalLink, RefreshCw, Save } from "lucide-react";
+import { useRouter } from "next/navigation";
+import {
+  Archive,
+  ArrowLeft,
+  ExternalLink,
+  RefreshCw,
+  RotateCcw,
+  Save,
+  Send,
+  Trash2,
+  Undo2,
+} from "lucide-react";
 import { toast } from "sonner";
 
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { PageHeader } from "@/components/PageHeader";
 import RecipeContentEditor from "@/components/RecipeContentEditor";
 import RecipeForm, {
@@ -14,14 +26,22 @@ import RecipeForm, {
   type RecipeFormValues,
 } from "@/components/RecipeForm";
 import { RecipeFormSkeleton } from "@/components/RecipeSkeleton";
+import { StatusBadge } from "@/components/StatusBadge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   ApiError,
+  archiveRecipe,
+  deleteRecipe,
   findMyRecipeById,
   getCategories,
   getMyRecipeById,
   getRecipeBySlug,
+  getRecipeValidation,
+  publishRecipe,
+  unarchiveRecipe,
+  unpublishRecipe,
   updateRecipe,
   type Category,
   type RecipeDetail,
@@ -34,6 +54,61 @@ const DIFFICULTY_TO_NUMBER: Record<string, string> = {
   Medium: "2",
   Hard: "3",
   Expert: "4",
+};
+
+type StatusAction =
+  | "publish"
+  | "unpublish"
+  | "archive"
+  | "unarchive"
+  | "delete";
+
+const STATUS_ACTIONS: Record<
+  StatusAction,
+  {
+    success: string;
+    confirmTitle: string;
+    confirmLabel: string;
+    confirmDescription: string;
+    destructive?: boolean;
+  }
+> = {
+  publish: {
+    success: "Đã xuất bản công thức.",
+    confirmTitle: "Xuất bản công thức?",
+    confirmLabel: "Xuất bản",
+    confirmDescription:
+      "Công thức sẽ hiển thị công khai ngay sau khi xuất bản thành công.",
+  },
+  unpublish: {
+    success: "Đã gỡ xuất bản, công thức quay về Nháp.",
+    confirmTitle: "Gỡ xuất bản công thức?",
+    confirmLabel: "Gỡ xuất bản",
+    confirmDescription:
+      "Công thức sẽ ngừng hiển thị công khai và quay về trạng thái Nháp.",
+  },
+  archive: {
+    success: "Đã lưu trữ công thức.",
+    confirmTitle: "Lưu trữ công thức?",
+    confirmLabel: "Lưu trữ",
+    confirmDescription:
+      "Công thức sẽ bị ẩn khỏi danh sách công khai nhưng vẫn có thể khôi phục về Nháp.",
+  },
+  unarchive: {
+    success: "Đã khôi phục công thức về Nháp.",
+    confirmTitle: "Khôi phục công thức?",
+    confirmLabel: "Khôi phục",
+    confirmDescription:
+      "Công thức sẽ trở về trạng thái Nháp để tiếp tục chỉnh sửa và xuất bản.",
+  },
+  delete: {
+    success: "Đã xóa công thức.",
+    confirmTitle: "Xóa công thức?",
+    confirmLabel: "Xóa",
+    confirmDescription:
+      "Công thức sẽ bị xóa mềm và không còn hiển thị trong danh sách của bạn.",
+    destructive: true,
+  },
 };
 
 function toFormValues(detail: RecipeDetail): RecipeFormValues {
@@ -88,6 +163,7 @@ export default function EditRecipePage({
   const { id: rawId } = use(params);
   const id = decodeURIComponent(rawId);
   const token = useAuthStore((state) => state.accessToken);
+  const router = useRouter();
 
   const [detail, setDetail] = useState<RecipeDetail | null>(null);
   const [values, setValues] = useState<RecipeFormValues | null>(null);
@@ -100,6 +176,10 @@ export default function EditRecipePage({
   const [conflict, setConflict] = useState(false);
   const [reloaded, setReloaded] = useState(false);
   const [notFound, setNotFound] = useState(false);
+  const [statusBusy, setStatusBusy] = useState(false);
+  const [statusError, setStatusError] = useState<string | null>(null);
+  const [pendingStatusAction, setPendingStatusAction] =
+    useState<StatusAction | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -205,6 +285,57 @@ export default function EditRecipePage({
     }
   }
 
+  async function runStatusAction(action: StatusAction) {
+    if (!detail) return;
+    setStatusBusy(true);
+    setStatusError(null);
+
+    try {
+      if (action === "delete") {
+        await deleteRecipe(detail.id, token);
+        toast.success(STATUS_ACTIONS.delete.success);
+        router.push("/dashboard/recipes");
+        router.refresh();
+        return;
+      }
+
+      if (action === "publish") {
+        const validation = await getRecipeValidation(detail.id);
+        if (!validation.canPublish) {
+          const message = `Chưa thể xuất bản: ${
+            validation.issues.join(" ") || "Cần ít nhất 1 bước thực hiện."
+          }`;
+          setStatusError(message);
+          toast.error(message);
+          return;
+        }
+      }
+
+      const call =
+        action === "publish"
+          ? publishRecipe
+          : action === "unpublish"
+            ? unpublishRecipe
+            : action === "archive"
+              ? archiveRecipe
+              : unarchiveRecipe;
+
+      const result = await call(detail.id, token);
+      setDetail((prev) => (prev ? { ...prev, status: result.status } : prev));
+      setPendingStatusAction(null);
+      toast.success(STATUS_ACTIONS[action].success);
+    } catch (err) {
+      const message = getErrorMessage(
+        err,
+        "Đổi trạng thái công thức thất bại."
+      );
+      setStatusError(message);
+      toast.error(message);
+    } finally {
+      setStatusBusy(false);
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex flex-col gap-4">
@@ -252,6 +383,95 @@ export default function EditRecipePage({
           </>
         }
       />
+
+      {detail && (
+        <Card className="gap-3 py-4">
+          <CardContent className="flex flex-col gap-3 px-4">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex flex-col gap-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-sm font-medium">Trạng thái</span>
+                  <StatusBadge status={detail.status} />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {detail.status === "Draft" &&
+                    "Công thức đang ở bản nháp. Kiểm tra nội dung rồi xuất bản khi đã sẵn sàng."}
+                  {detail.status === "Published" &&
+                    "Công thức đang hiển thị công khai. Bạn có thể gỡ xuất bản để quay về Nháp."}
+                  {detail.status === "Archived" &&
+                    "Công thức đang được lưu trữ. Khôi phục về Nháp để tiếp tục chỉnh sửa."}
+                </p>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                {detail.status === "Draft" && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={statusBusy}
+                    onClick={() => setPendingStatusAction("publish")}
+                  >
+                    <Send />
+                    Xuất bản
+                  </Button>
+                )}
+                {detail.status === "Published" && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={statusBusy}
+                    onClick={() => setPendingStatusAction("unpublish")}
+                  >
+                    <Undo2 />
+                    Gỡ xuất bản
+                  </Button>
+                )}
+                {detail.status === "Archived" && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={statusBusy}
+                    onClick={() => setPendingStatusAction("unarchive")}
+                  >
+                    <RotateCcw />
+                    Khôi phục
+                  </Button>
+                )}
+                {detail.status !== "Archived" && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={statusBusy}
+                    onClick={() => setPendingStatusAction("archive")}
+                  >
+                    <Archive />
+                    Lưu trữ
+                  </Button>
+                )}
+                <Button
+                  type="button"
+                  variant="destructive"
+                  size="sm"
+                  disabled={statusBusy}
+                  onClick={() => setPendingStatusAction("delete")}
+                >
+                  <Trash2 />
+                  Xóa
+                </Button>
+              </div>
+            </div>
+
+            {statusError && (
+              <p role="alert" className="text-xs text-destructive">
+                {statusError}
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {serverError && (
         <Alert variant="destructive">
@@ -322,6 +542,36 @@ export default function EditRecipePage({
           images={detail.images}
         />
       )}
+
+      <ConfirmDialog
+        open={Boolean(pendingStatusAction)}
+        onOpenChange={(open) => {
+          if (!open) setPendingStatusAction(null);
+        }}
+        title={pendingStatusAction ? STATUS_ACTIONS[pendingStatusAction].confirmTitle : ""}
+        description={
+          pendingStatusAction
+            ? `${STATUS_ACTIONS[pendingStatusAction].confirmDescription}${
+                detail ? ` Công thức: "${detail.title}".` : ""
+              }`
+            : undefined
+        }
+        confirmLabel={
+          pendingStatusAction
+            ? STATUS_ACTIONS[pendingStatusAction].confirmLabel
+            : "Xác nhận"
+        }
+        destructive={
+          pendingStatusAction
+            ? STATUS_ACTIONS[pendingStatusAction].destructive
+            : false
+        }
+        loading={statusBusy}
+        onConfirm={() => {
+          if (!pendingStatusAction) return;
+          void runStatusAction(pendingStatusAction);
+        }}
+      />
     </div>
   );
 }

@@ -2,7 +2,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BookOpen, LayoutDashboard, PenLine } from "lucide-react";
+import {
+  BookOpen,
+  LayoutDashboard,
+  PenLine,
+  ScrollText,
+  ShieldCheck,
+  Users,
+} from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/store/auth-store";
@@ -13,9 +20,16 @@ const LINKS = [
   { href: "/dashboard/recipes/new", label: "Viết công thức", icon: PenLine },
 ];
 
+const ADMIN_LINKS = [
+  { href: "/admin/users", label: "Quản lý người dùng", icon: Users },
+  { href: "/admin/logs", label: "Nhật ký hệ thống", icon: ScrollText },
+];
+
 export function DashboardNav() {
   const pathname = usePathname();
   const user = useAuthStore((state) => state.user);
+  const isAdmin =
+    user?.role === "Admin" || Boolean(user?.roles?.includes("Admin"));
 
   return (
     <div className="flex flex-col gap-4">
@@ -34,8 +48,8 @@ export function DashboardNav() {
       </div>
 
       <nav className="flex gap-1 overflow-x-auto lg:flex-col">
-        {LINKS.map((link) => {
-          const active = link.exact
+        {[...LINKS, ...(isAdmin ? ADMIN_LINKS : [])].map((link) => {
+          const active = "exact" in link && link.exact
             ? pathname === link.href
             : pathname.startsWith(link.href);
           return (
@@ -53,6 +67,16 @@ export function DashboardNav() {
           );
         })}
       </nav>
+
+      {isAdmin && (
+        <Link
+          href="/admin/users"
+          className="inline-flex items-center gap-2 rounded-lg border border-dashed px-3 py-2 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+        >
+          <ShieldCheck className="size-4" />
+          Khu vực quản trị
+        </Link>
+      )}
     </div>
   );
 }

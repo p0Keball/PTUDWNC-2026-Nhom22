@@ -1,6 +1,6 @@
 using Amazon.S3;
+using FoodBlog.Application.Common.Interfaces;
 using FoodBlog.Application.Interfaces;
-using FoodBlog.Application.Options;
 using FoodBlog.Application.Options;
 using FoodBlog.Domain.Entities;
 using FoodBlog.Infrastructure.Persistence;
@@ -43,6 +43,7 @@ public static class DependencyInjection
         services.Configure<EmailOptions>(config.GetSection(EmailOptions.SectionName));
         services.Configure<GoogleOAuthOptions>(config.GetSection(GoogleOAuthOptions.SectionName));
         services.AddScoped<IEmailSender, SmtpEmailSender>();
+        services.AddScoped<IAuditLogger, AuditLogger>();
         services.AddFileStorage(config);
         return services;
     }

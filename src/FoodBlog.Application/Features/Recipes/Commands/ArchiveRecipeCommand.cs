@@ -33,6 +33,9 @@ public sealed class ArchiveRecipeCommandHandler(IUnitOfWork uow, ICurrentUserSer
         if (!currentUser.IsAdmin && recipe.AuthorId != currentUser.UserId)
             throw new RecipeForbiddenException();
 
+        if (recipe.Status == RecipeStatus.Archived)
+            return new RecipeStatusDto(recipe.Id, recipe.Status.ToString());
+
         recipe.Status = RecipeStatus.Archived;
 
         await uow.SaveChangesAsync(ct);

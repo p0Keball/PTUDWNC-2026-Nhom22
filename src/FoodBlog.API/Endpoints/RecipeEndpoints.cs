@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using FoodBlog.Application.Common.Interfaces;
 using FoodBlog.Application.Features.Recipes;
 using Asp.Versioning;
 using Asp.Versioning.Builder;
@@ -120,12 +121,15 @@ public static class RecipeEndpoints
             return Results.Ok(recipe);
         });
 
-        group.MapPost("/", async (CreateRecipeCommand req, ISender sender, IOutputCacheStore store, CancellationToken ct) =>
+        group.MapPost("/", async (CreateRecipeCommand req, ISender sender, IOutputCacheStore store,
+            IAuditLogger audit, CancellationToken ct) =>
         {
             try
             {
                 var recipe = await sender.Send(req, ct);
                 await store.EvictByTagAsync("recipes", ct);
+                await audit.LogAsync(new AuditLogEntry("RECIPE_CREATED", "Recipe", recipe.Id.ToString(),
+                    $"Tạo công thức \"{recipe.Title}\""), ct);
                 return Results.Created($"/api/v1/recipes/{Uri.EscapeDataString(recipe.Slug)}", recipe);
             }
             catch (FluentValidation.ValidationException ex)
@@ -134,41 +138,66 @@ public static class RecipeEndpoints
             }
         }).RequireAuthorization().RequireRateLimiting("recipe-write");
 
-        group.MapPut("/{id:guid}", async (Guid id, UpdateRecipeRequest req, ISender sender, IOutputCacheStore store, CancellationToken ct) =>
+        group.MapPut("/{id:guid}", async (Guid id, UpdateRecipeRequest req, ISender sender,
+            IOutputCacheStore store, IAuditLogger audit, CancellationToken ct) =>
         {
             var result = await sender.Send(new UpdateRecipeCommand(
                 id, req.Title, req.Description, req.Instructions, req.CategoryId,
                 req.PrepTimeMinutes, req.CookTimeMinutes, req.Servings, req.Difficulty, req.RowVersion,
                 req.Nutrition), ct);
             await store.EvictByTagAsync("recipes", ct);
+            await audit.LogAsync(new AuditLogEntry("RECIPE_UPDATED", "Recipe", id.ToString(),
+                $"Cập nhật công thức \"{result.Title}\""), ct);
             return Results.Ok(result);
         }).RequireAuthorization().RequireRateLimiting("recipe-write");
 
-        group.MapPatch("/{id:guid}/publish", async (Guid id, ISender sender, IOutputCacheStore store, CancellationToken ct) =>
+        group.MapPatch("/{id:guid}/publish", async (Guid id, ISender sender, IOutputCacheStore store,
+            IAuditLogger audit, CancellationToken ct) =>
         {
             var result = await sender.Send(new PublishRecipeCommand(id), ct);
             await store.EvictByTagAsync("recipes", ct);
+            await audit.LogAsync(new AuditLogEntry("RECIPE_PUBLISHED", "Recipe", id.ToString(),
+                "Xuất bản công thức"), ct);
             return Results.Ok(result);
         }).RequireAuthorization().RequireRateLimiting("recipe-write");
 
-        group.MapPatch("/{id:guid}/unpublish", async (Guid id, ISender sender, IOutputCacheStore store, CancellationToken ct) =>
+        group.MapPatch("/{id:guid}/unpublish", async (Guid id, ISender sender, IOutputCacheStore store,
+            IAuditLogger audit, CancellationToken ct) =>
         {
             var result = await sender.Send(new UnpublishRecipeCommand(id), ct);
             await store.EvictByTagAsync("recipes", ct);
+            await audit.LogAsync(new AuditLogEntry("RECIPE_UNPUBLISHED", "Recipe", id.ToString(),
+                "Gỡ xuất bản công thức"), ct);
             return Results.Ok(result);
         }).RequireAuthorization().RequireRateLimiting("recipe-write");
 
-        group.MapPatch("/{id:guid}/archive", async (Guid id, ISender sender, IOutputCacheStore store, CancellationToken ct) =>
+        group.MapPatch("/{id:guid}/archive", async (Guid id, ISender sender, IOutputCacheStore store,
+            IAuditLogger audit, CancellationToken ct) =>
         {
             var result = await sender.Send(new ArchiveRecipeCommand(id), ct);
             await store.EvictByTagAsync("recipes", ct);
+            await audit.LogAsync(new AuditLogEntry("RECIPE_ARCHIVED", "Recipe", id.ToString(),
+                "Lưu trữ công thức"), ct);
             return Results.Ok(result);
         }).RequireAuthorization().RequireRateLimiting("recipe-write");
 
-        group.MapDelete("/{id:guid}", async (Guid id, ISender sender, IOutputCacheStore store, CancellationToken ct) =>
+        group.MapPatch("/{id:guid}/unarchive", async (Guid id, ISender sender, IOutputCacheStore store,
+            IAuditLogger audit, CancellationToken ct) =>
+        {
+            var result = await sender.Send(new UnarchiveRecipeCommand(id), ct);
+            await store.EvictByTagAsync("recipes", ct);
+            await audit.LogAsync(new AuditLogEntry("RECIPE_UNARCHIVED", "Recipe", id.ToString(),
+                "Khôi phục công thức từ lưu trữ"), ct);
+            return Results.Ok(result);
+        }).RequireAuthorization().RequireRateLimiting("recipe-write");
+
+        group.MapDelete("/{id:guid}", async (Guid id, ISender sender, IOutputCacheStore store,
+            IAuditLogger audit, CancellationToken ct) =>
         {
             await sender.Send(new DeleteRecipeCommand(id), ct);
             await store.EvictByTagAsync("recipes", ct);
+            await audit.LogAsync(new AuditLogEntry("RECIPE_DELETED", "Recipe", id.ToString(),
+                "Xóa công thức"), ct);
             return Results.NoContent();
         }).RequireAuthorization().RequireRateLimiting("recipe-write");
     }

@@ -40,7 +40,9 @@ public class GlobalExceptionMiddleware(RequestDelegate next, ILogger<GlobalExcep
                 ? "about:blank"
                 : $"https://culinaryblog.local/problems/{code.ToLowerInvariant().Replace('_', '-')}",
             ["title"] = title,
-            ["status"] = (int)status
+            ["status"] = (int)status,
+            ["traceId"] = context.TraceIdentifier,
+            ["correlationId"] = context.Items[CorrelationIdMiddleware.ItemKey]
         };
         if (code is not null)
             problem["code"] = code;
@@ -79,6 +81,9 @@ public class GlobalExceptionMiddleware(RequestDelegate next, ILogger<GlobalExcep
                 HttpStatusCode.Conflict, rex.ErrorCode, rex.Message, null),
 
             RecipePublishIncompleteException rex => (
+                HttpStatusCode.UnprocessableEntity, rex.ErrorCode, rex.Message, null),
+
+            RecipeStatusTransitionException rex => (
                 HttpStatusCode.UnprocessableEntity, rex.ErrorCode, rex.Message, null),
 
             Domain.Exceptions.ValidationException vex => (

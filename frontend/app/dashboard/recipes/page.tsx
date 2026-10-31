@@ -21,6 +21,7 @@ import {
   getMyRecipes,
   getRecipeValidation,
   publishRecipe,
+  unarchiveRecipe,
   unpublishRecipe,
   type RecipeSummary,
 } from "@/lib/api";
@@ -28,6 +29,37 @@ import { getErrorMessage } from "@/lib/errors";
 import { useAuthStore } from "@/store/auth-store";
 
 type StatusTab = "all" | "draft" | "published" | "archived";
+
+type ConfirmableAction = "archive" | "unpublish" | "unarchive";
+
+interface PendingConfirm {
+  kind: ConfirmableAction;
+  recipe: RecipeSummary;
+}
+
+const CONFIRM_COPY: Record<
+  ConfirmableAction,
+  { title: string; confirmLabel: string; success: string; verb: string }
+> = {
+  archive: {
+    title: "Lưu trữ công thức?",
+    confirmLabel: "Lưu trữ",
+    success: "Đã lưu trữ công thức.",
+    verb: "sẽ bị ẩn khỏi danh sách công khai và chuyển sang trạng thái Lưu trữ",
+  },
+  unpublish: {
+    title: "Gỡ xuất bản công thức?",
+    confirmLabel: "Gỡ xuất bản",
+    success: "Đã gỡ xuất bản.",
+    verb: "sẽ ngừng hiển thị công khai và quay về trạng thái Nháp",
+  },
+  unarchive: {
+    title: "Khôi phục công thức?",
+    confirmLabel: "Khôi phục",
+    success: "Đã khôi phục công thức về Nháp.",
+    verb: "sẽ được khôi phục về trạng thái Nháp để tiếp tục chỉnh sửa và xuất bản",
+  },
+};
 
 const TABS: { value: StatusTab; label: string }[] = [
   { value: "all", label: "Tất cả" },
@@ -47,6 +79,9 @@ export default function DashboardRecipesPage() {
   const [acting, setActing] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<RecipeSummary | null>(null);
+  const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(
+    null
+  );
 
   const pageSize = 12;
 
@@ -130,6 +165,7 @@ export default function DashboardRecipesPage() {
     } finally {
       setActing(null);
       setDeleteTarget(null);
+      setPendingConfirm(null);
     }
   }
 
@@ -171,21 +207,28 @@ export default function DashboardRecipesPage() {
             Xuất bản
           </Button>
         )}
-        {recipe.status !== "Draft" && recipe.status !== "Archived" && (
+        {recipe.status === "Published" && (
           <Button
             type="button"
             variant="outline"
             size="sm"
             disabled={busy}
             onClick={() =>
-              runAction(
-                recipe,
-                () => unpublishRecipe(recipe.id, token),
-                "Đã gỡ xuất bản."
-              )
+              setPendingConfirm({ kind: "unpublish", recipe })
             }
           >
             Gỡ xuất bản
+          </Button>
+        )}
+        {recipe.status === "Archived" && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={busy}
+            onClick={() => setPendingConfirm({ kind: "unarchive", recipe })}
+          >
+            Khôi phục
           </Button>
         )}
         {recipe.status !== "Archived" && (
@@ -194,13 +237,7 @@ export default function DashboardRecipesPage() {
             variant="outline"
             size="sm"
             disabled={busy}
-            onClick={() =>
-              runAction(
-                recipe,
-                () => archiveRecipe(recipe.id, token),
-                "Đã lưu trữ công thức."
-              )
-            }
+            onClick={() => setPendingConfirm({ kind: "archive", recipe })}
           >
             Lưu trữ
           </Button>
@@ -242,6 +279,13 @@ export default function DashboardRecipesPage() {
           ))}
         </TabsList>
       </Tabs>
+
+      <p className="-mt-3 text-xs text-muted-foreground">
+        Quy trình trạng thái: <span className="font-medium">Nháp</span> →{" "}
+        <span className="font-medium">Đã xuất bản</span> →{" "}
+        <span className="font-medium">Lưu trữ</span>. Công thức đã lưu trữ có
+        thể khôi phục về Nháp, công thức đã xóa mềm sẽ không còn hiển thị.
+      </p>
 
       {error && (
         <Alert variant="destructive">
@@ -307,6 +351,44 @@ export default function DashboardRecipesPage() {
         totalPages={totalPages}
         onPageChange={handlePageChange}
         disabled={loading || Boolean(acting)}
+      />
+
+      <ConfirmDialog
+        open={Boolean(pendingConfirm)}
+        onOpenChange={(open) => {
+          if (!open) setPendingConfirm(null);
+        }}
+        title={pendingConfirm ? CONFIRM_COPY[pendingConfirm.kind].title : ""}
+        description={
+          pendingConfirm
+            ? `Công thức "${pendingConfirm.recipe.title}" ${
+                CONFIRM_COPY[pendingConfirm.kind].verb
+              }.`
+            : undefined
+        }
+        confirmLabel={
+          pendingConfirm
+            ? CONFIRM_COPY[pendingConfirm.kind].confirmLabel
+            : "Xác nhận"
+        }
+        loading={Boolean(
+          pendingConfirm && acting === pendingConfirm.recipe.id
+        )}
+        onConfirm={() => {
+          if (!pendingConfirm) return;
+          const { kind, recipe } = pendingConfirm;
+          const action =
+            kind === "archive"
+              ? archiveRecipe
+              : kind === "unpublish"
+                ? unpublishRecipe
+                : unarchiveRecipe;
+          void runAction(
+            recipe,
+            () => action(recipe.id, token),
+            CONFIRM_COPY[kind].success
+          );
+        }}
       />
 
       <ConfirmDialog

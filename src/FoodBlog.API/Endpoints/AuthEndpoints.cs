@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using Asp.Versioning;
 using Asp.Versioning.Builder;
 using Hangfire;
+using FoodBlog.Application.Common.Interfaces;
 using FoodBlog.Application.DTOs.Auth;
 using FoodBlog.Infrastructure.Jobs;
 using FoodBlog.Application.Features.Auth.Commands.GoogleLogin;
@@ -65,6 +66,7 @@ public static class AuthEndpoints
         SignInManager<ApplicationUser> signInManager,
         FoodBlogDbContext db,
         IBackgroundJobClient backgroundJobs,
+        IAuditLogger audit,
         HttpContext httpContext,
         CancellationToken ct)
     {
@@ -109,6 +111,8 @@ public static class AuthEndpoints
         await signInManager.SignInAsync(user, isPersistent: false);
         backgroundJobs.Enqueue<WelcomeEmailJob>(job =>
             job.SendAsync(user.Email!, user.DisplayName, CancellationToken.None));
+        await audit.LogAsync(new AuditLogEntry("USER_REGISTERED", "User", user.Id,
+            $"Đăng ký tài khoản {user.Email}", UserId: user.Id, UserEmail: user.Email), ct);
         return Results.Ok(ToResponse(user, refreshToken));
     }
 
@@ -117,6 +121,7 @@ public static class AuthEndpoints
         UserManager<ApplicationUser> users,
         SignInManager<ApplicationUser> signInManager,
         FoodBlogDbContext db,
+        IAuditLogger audit,
         HttpContext httpContext,
         CancellationToken ct)
     {
@@ -129,7 +134,11 @@ public static class AuthEndpoints
 
         var user = await users.FindByEmailAsync(email);
         if (user is null || !user.IsActive)
+        {
+            await audit.LogAsync(new AuditLogEntry("USER_LOGIN_FAILED", "Auth", null,
+                $"Đăng nhập thất bại cho {email}", Succeeded: false, UserEmail: email), ct);
             return Results.Unauthorized();
+        }
 
         if (!user.LockoutEnabled)
         {
@@ -150,6 +159,9 @@ public static class AuthEndpoints
 
             httpContext.Response.Headers.RetryAfter = retryAfterSeconds.ToString(
                 System.Globalization.CultureInfo.InvariantCulture);
+            await audit.LogAsync(new AuditLogEntry("USER_LOGIN_LOCKED", "Auth", user.Id,
+                $"Tài khoản {user.Email} bị khóa do sai mật khẩu quá 5 lần",
+                Succeeded: false, UserId: user.Id, UserEmail: user.Email), ct);
             return Results.Problem(
                 title: "Tài khoản đã bị khóa.",
                 detail: "Tài khoản bị khóa do đăng nhập sai quá 5 lần. Vui lòng thử lại sau.",
@@ -157,10 +169,16 @@ public static class AuthEndpoints
         }
 
         if (!result.Succeeded)
+        {
+            await audit.LogAsync(new AuditLogEntry("USER_LOGIN_FAILED", "Auth", user.Id,
+                $"Sai mật khẩu cho {user.Email}", Succeeded: false, UserId: user.Id, UserEmail: user.Email), ct);
             return Results.Unauthorized();
+        }
 
         var refreshToken = await CreateRefreshTokenAsync(user, db, httpContext, ct);
         await signInManager.SignInAsync(user, isPersistent: false);
+        await audit.LogAsync(new AuditLogEntry("USER_LOGGED_IN", "Auth", user.Id,
+            $"Đăng nhập thành công {user.Email}", UserId: user.Id, UserEmail: user.Email), ct);
         return Results.Ok(ToResponse(user, refreshToken));
     }
 
@@ -220,6 +238,7 @@ public static class AuthEndpoints
     private static async Task<IResult> Logout(
         ClaimsPrincipal principal,
         ISender sender,
+        IAuditLogger audit,
         SignInManager<ApplicationUser> signInManager,
         CancellationToken ct)
     {
@@ -230,6 +249,8 @@ public static class AuthEndpoints
 
         await sender.Send(new LogoutCommand(userId), ct);
         await signInManager.SignOutAsync();
+        await audit.LogAsync(new AuditLogEntry("USER_LOGGED_OUT", "Auth", userId,
+            "Đăng xuất"), ct);
         return Results.NoContent();
     }
 

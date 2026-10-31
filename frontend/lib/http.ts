@@ -14,6 +14,7 @@ export class ApiError extends Error {
   readonly detail?: string | null;
   readonly errors?: Record<string, string[]>;
   readonly traceId?: string;
+  readonly correlationId?: string | null;
 
   constructor(init: {
     status: number;
@@ -22,6 +23,7 @@ export class ApiError extends Error {
     detail?: string | null;
     errors?: Record<string, string[]>;
     traceId?: string;
+    correlationId?: string | null;
   }) {
     super(init.message);
     this.name = "ApiError";
@@ -30,6 +32,7 @@ export class ApiError extends Error {
     this.detail = init.detail;
     this.errors = init.errors;
     this.traceId = init.traceId;
+    this.correlationId = init.correlationId;
   }
 }
 
@@ -63,6 +66,7 @@ export async function toApiError(
     detail: problem?.detail ?? null,
     errors: problem?.errors,
     traceId: problem?.traceId,
+    correlationId: problem?.correlationId,
   });
 }
 

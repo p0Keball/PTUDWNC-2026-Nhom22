@@ -1,3 +1,4 @@
+using FoodBlog.Application.Common.Interfaces;
 using FoodBlog.Application.Interfaces;
 using FoodBlog.Infrastructure.Persistence;
 using FoodBlog.Infrastructure.Services;
@@ -28,17 +29,19 @@ public static class StorageEndpoints
             if (report.Error is not null)
                 return Results.Json(new { code = "STORAGE_UNAVAILABLE", title = "Không quét được storage." }, statusCode: 503);
             return Results.Ok(report);
-        });
+        }).RequireAuthorization(policy => policy.RequireRole("Admin"));
 
         // Orphan cleanup thật.
         app.MapPost("/api/v1/admin/storage/orphans/cleanup", async (
-            OrphanCleanupRunner runner, string? prefix, double? minAgeHours, CancellationToken ct) =>
+            OrphanCleanupRunner runner, IAuditLogger audit, string? prefix, double? minAgeHours, CancellationToken ct) =>
         {
             var report = await runner.ScanAsync(dryRun: false, prefix: prefix, minAgeHours: minAgeHours, ct: ct);
             if (report.Error is not null)
                 return Results.Json(new { code = "STORAGE_UNAVAILABLE", title = "Không quét được storage." }, statusCode: 503);
+            await audit.LogAsync(new AuditLogEntry("STORAGE_ORPHANS_CLEANED", "Storage", null,
+                $"Dọn {report.OrphanCount} file mồ côi ({report.OrphanBytes} bytes)"), ct);
             return Results.Ok(report);
-        });
+        }).RequireAuthorization(policy => policy.RequireRole("Admin"));
 
         // Form Validation checklist: FE hiện tick trước khi cho Publish.
         app.MapGet("/api/v1/recipes/{id:guid}/validation", async (Guid id, FoodBlogDbContext db, CancellationToken ct) =>

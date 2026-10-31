@@ -3,6 +3,7 @@ using Asp.Versioning;
 using Asp.Versioning.Builder;
 using FluentValidation;
 using FoodBlog.Application.Common;
+using FoodBlog.Application.Common.Interfaces;
 using FoodBlog.Application.Features.Recipes;
 using FoodBlog.Application.Interfaces;
 using FoodBlog.Domain.Entities;
@@ -218,8 +219,8 @@ public static class RecipeChildEndpoints
 
         // FR-RCP-008 / §8.4: upload multipart/form-data đúng đặc tả SRS.
         group.MapPost("/images", async (Guid id, IFormFile file, FoodBlogDbContext db,
-            IFileStorageService storage, IImageJobQueue jobs, ClaimsPrincipal user, CancellationToken ct,
-            string? altText = null) =>
+            IFileStorageService storage, IImageJobQueue jobs, IAuditLogger audit,
+            ClaimsPrincipal user, CancellationToken ct, string? altText = null) =>
         {
             var recipe = await db.Recipes.FirstOrDefaultAsync(r => r.Id == id, ct);
             if (recipe is null) return NotFound(id);
@@ -263,8 +264,10 @@ public static class RecipeChildEndpoints
             await cache.EvictByTagAsync("recipes", ct);
             // FR-JOB-002: đẩy job tạo thumbnail nền (fire-and-forget).
             jobs.EnqueueThumbnail(image.Id);
+            await audit.LogAsync(new AuditLogEntry("IMAGE_UPLOADED", "RecipeImage", image.Id.ToString(),
+                $"Upload ảnh cho công thức {id}"), ct);
             return Results.Created($"/api/v1/recipes/{id}/images/{image.Id}", ToImage(image));
-        }).DisableAntiforgery();
+        }).DisableAntiforgery().RequireRateLimiting("upload");
 
         // Biến thể tuần 1: tạo bản ghi ảnh từ URL có sẵn.
         group.MapPost("/images/by-url", async (Guid id, CreateImageRequest req, FoodBlogDbContext db,
@@ -306,7 +309,8 @@ public static class RecipeChildEndpoints
 
         // Bước 2 confirm: kiểm tra object thực tế trên MinIO (size + magic bytes) rồi mới lưu DB.
         group.MapPost("/images/confirm", async (Guid id, ConfirmImageRequest req, FoodBlogDbContext db,
-            IFileStorageService storage, IImageJobQueue jobs, ClaimsPrincipal user, CancellationToken ct) =>
+            IFileStorageService storage, IImageJobQueue jobs, IAuditLogger audit,
+            ClaimsPrincipal user, CancellationToken ct) =>
         {
             var recipe = await db.Recipes.FirstOrDefaultAsync(r => r.Id == id, ct);
             if (recipe is null) return NotFound(id);
@@ -366,11 +370,13 @@ public static class RecipeChildEndpoints
             await cache.EvictByTagAsync("recipes", ct);
             // FR-JOB-002: đẩy job tạo thumbnail nền (fire-and-forget).
             jobs.EnqueueThumbnail(image.Id);
+            await audit.LogAsync(new AuditLogEntry("IMAGE_UPLOADED", "RecipeImage", image.Id.ToString(),
+                $"Upload ảnh cho công thức {id}"), ct);
             return Results.Created($"/api/v1/recipes/{id}/images/{image.Id}", ToImage(image));
-        });
+        }).RequireRateLimiting("upload");
 
         group.MapPatch("/images/{imgId:guid}/primary", async (Guid id, Guid imgId, FoodBlogDbContext db,
-            ClaimsPrincipal user, CancellationToken ct) =>
+            IAuditLogger audit, ClaimsPrincipal user, CancellationToken ct) =>
         {
             var forbidden = await CheckOwnerAsync(db, id, user, ct);
             if (forbidden is not null) return forbidden;
@@ -381,11 +387,13 @@ public static class RecipeChildEndpoints
                 s.SetPrimary(s.Id == imgId);
             await db.SaveChangesAsync(ct);
             await cache.EvictByTagAsync("recipes", ct);
+            await audit.LogAsync(new AuditLogEntry("IMAGE_SET_PRIMARY", "RecipeImage", imgId.ToString(),
+                $"Đặt ảnh chính cho công thức {id}"), ct);
             return Results.Ok(ToImage(image));
         });
 
         group.MapDelete("/images/{imgId:guid}", async (Guid id, Guid imgId, FoodBlogDbContext db,
-            IFileStorageService storage, ClaimsPrincipal user, CancellationToken ct) =>
+            IFileStorageService storage, IAuditLogger audit, ClaimsPrincipal user, CancellationToken ct) =>
         {
             var forbidden = await CheckOwnerAsync(db, id, user, ct);
             if (forbidden is not null) return forbidden;
@@ -408,6 +416,8 @@ public static class RecipeChildEndpoints
             }
             await RenumberImagesAsync(db, id);
             await cache.EvictByTagAsync("recipes", ct);
+            await audit.LogAsync(new AuditLogEntry("IMAGE_DELETED", "RecipeImage", imgId.ToString(),
+                $"Xóa ảnh khỏi công thức {id}"), ct);
             return Results.NoContent();
         });
     }

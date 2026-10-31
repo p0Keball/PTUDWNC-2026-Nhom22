@@ -33,6 +33,13 @@ public sealed class PublishRecipeCommandHandler(IUnitOfWork uow, ICurrentUserSer
         if (!currentUser.IsAdmin && recipe.AuthorId != currentUser.UserId)
             throw new RecipeForbiddenException();
 
+        if (recipe.Status == RecipeStatus.Published)
+            return new RecipeStatusDto(recipe.Id, recipe.Status.ToString());
+
+        if (recipe.Status != RecipeStatus.Draft)
+            throw new RecipeStatusTransitionException(
+                "Chỉ có thể xuất bản công thức đang ở trạng thái nháp. Hãy khôi phục công thức đã lưu trữ trước.");
+
         if (recipe.Steps.Count == 0)
             throw new RecipePublishIncompleteException();
 

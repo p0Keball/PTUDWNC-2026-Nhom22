@@ -1,4 +1,4 @@
-import { ApiError, http } from "@/lib/http";
+import { API_BASE_URL, ApiError, http } from "@/lib/http";
 import { buildQuery } from "@/lib/utils";
 
 export { ApiError };
@@ -373,7 +373,7 @@ export async function findMyRecipeById(
 
 async function changeRecipeStatus(
   id: string,
-  action: "publish" | "unpublish" | "archive",
+  action: "publish" | "unpublish" | "archive" | "unarchive",
   token?: string | null
 ): Promise<RecipeStatusResult> {
   return http.patch<RecipeStatusResult>(
@@ -393,6 +393,8 @@ export const unpublishRecipe = (id: string, token?: string | null) =>
   changeRecipeStatus(id, "unpublish", token);
 export const archiveRecipe = (id: string, token?: string | null) =>
   changeRecipeStatus(id, "archive", token);
+export const unarchiveRecipe = (id: string, token?: string | null) =>
+  changeRecipeStatus(id, "unarchive", token);
 
 export async function deleteRecipe(
   id: string,
@@ -583,8 +585,73 @@ export async function uploadRecipeImage(
   signal?: AbortSignal
 ): Promise<RecipeImage> {
   const presigned = await imageApi.presign(recipeId, file);
-  await putFileToPresignedUrl(presigned.uploadUrl, file, onProgress, signal);
+  try {
+    await putFileToPresignedUrl(presigned.uploadUrl, file, onProgress, signal);
+  } catch (error) {
+    // MinIO chưa cấu hình CORS hoặc presigned URL hết hạn: fallback sang
+    // endpoint multipart của API (FR-RCP-008) để upload vẫn hoàn tất.
+    if (signal?.aborted) throw error;
+    return uploadImageMultipart(recipeId, file, onProgress, altText, signal);
+  }
   return imageApi.confirm(recipeId, presigned.objectKey, altText);
+}
+
+/**
+ * Upload multipart/form-data trực tiếp qua API. Dùng làm fallback khi trình duyệt
+ * không PUT được lên presigned URL (CORS MinIO) và cũng là luồng đúng đặc tả SRS.
+ */
+export function uploadImageMultipart(
+  recipeId: string,
+  file: File,
+  onProgress: (percent: number) => void,
+  altText?: string,
+  signal?: AbortSignal
+): Promise<RecipeImage> {
+  return new Promise((resolve, reject) => {
+    const query = altText ? `?altText=${encodeURIComponent(altText)}` : "";
+    const xhr = new XMLHttpRequest();
+    xhr.open(
+      "POST",
+      `${API_BASE_URL}/api/v1/recipes/${encodeURIComponent(recipeId)}/images${query}`,
+      true
+    );
+    xhr.withCredentials = true;
+
+    if (signal) {
+      signal.addEventListener("abort", () => xhr.abort(), { once: true });
+    }
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable)
+        onProgress(Math.round((event.loaded / event.total) * 100));
+    };
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          resolve(JSON.parse(xhr.responseText) as RecipeImage);
+        } catch {
+          reject(new Error("Phản hồi upload ảnh không hợp lệ."));
+        }
+        return;
+      }
+      let message = `Upload ảnh thất bại (${xhr.status}).`;
+      try {
+        const problem = JSON.parse(xhr.responseText) as {
+          title?: string;
+          detail?: string;
+        };
+        message = problem.title || problem.detail || message;
+      } catch {
+        /* giữ message mặc định */
+      }
+      reject(new Error(message));
+    };
+    xhr.onerror = () => reject(new Error("Lỗi mạng khi upload ảnh."));
+    xhr.onabort = () => reject(new Error("Đã hủy upload."));
+
+    const form = new FormData();
+    form.append("file", file);
+    xhr.send(form);
+  });
 }
 
 /* -------------------------------------------------------------------------- */
@@ -714,4 +781,149 @@ export async function searchRecipes(
       fallbackMessage: "Tìm kiếm công thức thất bại.",
     }
   );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Admin: người dùng & nhật ký hệ thống                                       */
+/* -------------------------------------------------------------------------- */
+
+export interface AdminUserItem {
+  id: string;
+  email: string;
+  displayName: string;
+  avatarUrl: string | null;
+  roles: string[];
+  role: string;
+  isActive: boolean;
+  isLockedOut: boolean;
+  createdAt: string;
+  recipeCount: number;
+}
+
+export interface AdminUserStats {
+  totalUsers: number;
+  activeUsers: number;
+  admins: number;
+  authors: number;
+}
+
+export interface AdminUserListResponse {
+  items: AdminUserItem[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+  stats: AdminUserStats;
+}
+
+export interface AdminUserListParams {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+  role?: string;
+  status?: string;
+  sort?: string;
+}
+
+export async function getAdminUsers(
+  params: AdminUserListParams = {},
+  token?: string | null
+): Promise<AdminUserListResponse> {
+  const query = buildQuery({
+    page: params.page ?? 1,
+    pageSize: params.pageSize ?? 20,
+    search: params.search?.trim() || undefined,
+    role: params.role || undefined,
+    status: params.status || undefined,
+    sort: params.sort || undefined,
+  });
+  return http.get<AdminUserListResponse>(`/api/v1/admin/users${query}`, {
+    token,
+    cache: "no-store",
+    fallbackMessage: "Không tải được danh sách người dùng.",
+  });
+}
+
+export async function setAdminUserStatus(
+  id: string,
+  isActive: boolean,
+  token?: string | null
+): Promise<{ id: string; isActive: boolean }> {
+  return http.patch<{ id: string; isActive: boolean }>(
+    `/api/v1/admin/users/${encodeURIComponent(id)}/status`,
+    { isActive },
+    {
+      token,
+      cache: "no-store",
+      fallbackMessage: "Cập nhật trạng thái người dùng thất bại.",
+    }
+  );
+}
+
+export async function setAdminUserRole(
+  id: string,
+  role: string,
+  token?: string | null
+): Promise<{ id: string; role: string }> {
+  return http.patch<{ id: string; role: string }>(
+    `/api/v1/admin/users/${encodeURIComponent(id)}/role`,
+    { role },
+    {
+      token,
+      cache: "no-store",
+      fallbackMessage: "Đổi role người dùng thất bại.",
+    }
+  );
+}
+
+export interface AuditLogItem {
+  id: string;
+  userId: string | null;
+  userEmail: string | null;
+  action: string;
+  entityType: string;
+  entityId: string | null;
+  description: string;
+  ipAddress: string | null;
+  correlationId: string | null;
+  succeeded: boolean;
+  createdAt: string;
+}
+
+export interface AuditLogListResponse {
+  items: AuditLogItem[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+}
+
+export interface AuditLogListParams {
+  page?: number;
+  pageSize?: number;
+  action?: string;
+  entityType?: string;
+  userId?: string;
+  search?: string;
+  from?: string;
+  to?: string;
+}
+
+export async function getAuditLogs(
+  params: AuditLogListParams = {},
+  token?: string | null
+): Promise<AuditLogListResponse> {
+  const query = buildQuery({
+    page: params.page ?? 1,
+    pageSize: params.pageSize ?? 20,
+    action: params.action || undefined,
+    entityType: params.entityType || undefined,
+    userId: params.userId || undefined,
+    search: params.search?.trim() || undefined,
+    from: params.from || undefined,
+    to: params.to || undefined,
+  });
+  return http.get<AuditLogListResponse>(`/api/v1/admin/audit-logs${query}`, {
+    token,
+    cache: "no-store",
+    fallbackMessage: "Không tải được nhật ký hệ thống.",
+  });
 }

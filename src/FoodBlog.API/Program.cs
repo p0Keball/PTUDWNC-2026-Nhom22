@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using System.Threading.RateLimiting;
 using Asp.Versioning;
 using Asp.Versioning.Builder;
@@ -25,8 +26,17 @@ using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Scalar.AspNetCore;
+using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// FR-OBS-002: Structured logging bằng Serilog (Console + File + Seq).
+// Cấu hình chi tiết nằm trong appsettings.json -> Serilog.
+builder.Host.UseSerilog((context, services, configuration) => configuration
+    .ReadFrom.Configuration(context.Configuration)
+    .ReadFrom.Services(services)
+    .Enrich.FromLogContext()
+    .Enrich.WithProperty("Application", "FoodBlog.API"));
 
 builder.Services.AddOpenApi();
 builder.Services.AddApiVersioning(options =>
@@ -123,6 +133,7 @@ builder.Services.Configure<GoogleOAuthOptions>(
 builder.Services.Configure<EmailOptions>(
     builder.Configuration.GetSection(EmailOptions.SectionName));
 builder.Services.AddScoped<IEmailSender, SmtpEmailSender>();
+builder.Services.AddScoped<IAuditLogger, AuditLogger>();
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
     options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
@@ -176,10 +187,26 @@ builder.Services.Configure<PasswordHasherOptions>(options =>
 var app = builder.Build();
 
 app.UseForwardedHeaders();
+app.UseMiddleware<CorrelationIdMiddleware>();
 app.UseCors("Frontend");
 app.UseRateLimiter();
 app.UseMiddleware<GlobalExceptionMiddleware>();
 app.UseAuthentication();
+// UserId chỉ có sau khi Authentication chạy -> push vào log context ở đây.
+app.UseMiddleware<UserLogContextMiddleware>();
+app.UseSerilogRequestLogging(options =>
+{
+    options.MessageTemplate =
+        "HTTP {RequestMethod} {RequestPath} responded {StatusCode} in {Elapsed:0.0000} ms";
+    options.EnrichDiagnosticContext = (diagnosticContext, httpContext) =>
+    {
+        diagnosticContext.Set("CorrelationId", httpContext.Items[CorrelationIdMiddleware.ItemKey]);
+        diagnosticContext.Set("UserId",
+            httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier)
+            ?? httpContext.User.FindFirstValue("sub"));
+        diagnosticContext.Set("UserAgent", httpContext.Request.Headers.UserAgent.ToString());
+    };
+});
 app.UseAuthorization();
 app.UseOutputCache();
 app.UseHangfireDashboard("/hangfire", new DashboardOptions
@@ -187,8 +214,11 @@ app.UseHangfireDashboard("/hangfire", new DashboardOptions
     Authorization = [new HangfireAdminAuthorizationFilter()]
 });
 
-using (var scope = app.Services.CreateScope())
+// Integration tests (tests/FoodBlog.Tests) dùng InMemory provider và tự seed dữ liệu,
+// nên bỏ qua migrate + seed thật khi Environment = "Testing".
+if (!app.Environment.IsEnvironment("Testing"))
 {
+    using var scope = app.Services.CreateScope();
     var db = scope.ServiceProvider.GetRequiredService<FoodBlogDbContext>();
     await db.Database.MigrateAsync();
     await FoodBlogSeeder.SeedAsync(app.Services);
@@ -211,5 +241,11 @@ app.MapCategoryEndpoints(apiVersionSet);
 app.MapRecipeEndpoints(apiVersionSet);
 app.MapRecipeChildEndpoints(apiVersionSet);
 app.MapStorageEndpoints();
+app.MapAdminEndpoints(apiVersionSet);
 
 app.Run();
+
+Log.CloseAndFlush();
+
+// Cần thiết để WebApplicationFactory<Program> trong test project truy cập được entry point.
+public partial class Program;

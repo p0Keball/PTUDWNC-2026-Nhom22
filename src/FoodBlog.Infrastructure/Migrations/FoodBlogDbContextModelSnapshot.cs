@@ -109,6 +109,63 @@ namespace FoodBlog.Infrastructure.Migrations
                     b.ToTable("AspNetUsers", (string)null);
                 });
 
+            modelBuilder.Entity("FoodBlog.Domain.Entities.AuditLog", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<string>("CorrelationId")
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamptz");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasColumnType("varchar(1000)");
+
+                    b.Property<string>("EntityId")
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<string>("EntityType")
+                        .IsRequired()
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<string>("IpAddress")
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<bool>("Succeeded")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true);
+
+                    b.Property<string>("UserAgent")
+                        .HasColumnType("varchar(512)");
+
+                    b.Property<string>("UserEmail")
+                        .HasColumnType("varchar(256)");
+
+                    b.Property<string>("UserId")
+                        .HasColumnType("varchar(450)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Action");
+
+                    b.HasIndex("CreatedAt");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("EntityType", "EntityId");
+
+                    b.ToTable("AuditLogs", (string)null);
+                });
+
             modelBuilder.Entity("FoodBlog.Domain.Entities.Category", b =>
                 {
                     b.Property<Guid>("Id")

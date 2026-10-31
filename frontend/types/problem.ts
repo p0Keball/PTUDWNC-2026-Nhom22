@@ -5,6 +5,7 @@ export interface ProblemDetails {
   detail?: string | null;
   code?: string | null;
   traceId?: string;
+  correlationId?: string | null;
   errors?: Record<string, string[]>;
 }
 
