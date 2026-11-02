@@ -33,6 +33,12 @@ public sealed class UnpublishRecipeCommandHandler(IUnitOfWork uow, ICurrentUserS
         if (!currentUser.IsAdmin && recipe.AuthorId != currentUser.UserId)
             throw new RecipeForbiddenException();
 
+        if (recipe.Status != RecipeStatus.Published)
+            throw new FoodBlog.Domain.Exceptions.ValidationException(new Dictionary<string, string[]>
+            {
+                ["status"] = ["Chỉ có thể gỡ xuất bản công thức đang ở trạng thái đã xuất bản."]
+            });
+
         recipe.Status = RecipeStatus.Draft;
 
         await uow.SaveChangesAsync(ct);

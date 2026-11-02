@@ -39,6 +39,8 @@ public sealed class GetRecipesQueryHandler(IFoodBlogDbContext db) : IRequestHand
             "createdAt" => query.OrderBy(r => r.CreatedAt),
             "title" => query.OrderBy(r => r.Title),
             "-title" => query.OrderByDescending(r => r.Title),
+            "cookTime" => query.OrderBy(r => r.CookTimeMinutes),
+            "-cookTime" => query.OrderByDescending(r => r.CookTimeMinutes),
             _ => query.OrderByDescending(r => r.CreatedAt)
         };
 

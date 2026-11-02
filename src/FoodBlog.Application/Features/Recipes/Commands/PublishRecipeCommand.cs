@@ -33,6 +33,12 @@ public sealed class PublishRecipeCommandHandler(IUnitOfWork uow, ICurrentUserSer
         if (!currentUser.IsAdmin && recipe.AuthorId != currentUser.UserId)
             throw new RecipeForbiddenException();
 
+        if (recipe.Status == RecipeStatus.Archived)
+            throw new FoodBlog.Domain.Exceptions.ValidationException(new Dictionary<string, string[]>
+            {
+                ["status"] = ["Không thể xuất bản công thức đang lưu trữ. Hãy khôi phục công thức trước."]
+            });
+
         if (recipe.Steps.Count == 0)
             throw new RecipePublishIncompleteException();
 
