@@ -26,6 +26,10 @@ export interface RecipeListResponse {
   totalCount: number;
   page: number;
   pageSize: number;
+  /** Có ở /recipes, /recipes/mine, /recipes/search. */
+  totalPages?: number;
+  hasNextPage?: boolean;
+  hasPreviousPage?: boolean;
 }
 
 export interface RecipeDetail {
@@ -176,6 +180,9 @@ export interface SearchResponse {
   totalCount: number;
   page: number;
   pageSize: number;
+  totalPages?: number;
+  hasNextPage?: boolean;
+  hasPreviousPage?: boolean;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -373,7 +380,7 @@ export async function findMyRecipeById(
 
 async function changeRecipeStatus(
   id: string,
-  action: "publish" | "unpublish" | "archive",
+  action: "publish" | "unpublish" | "archive" | "restore",
   token?: string | null
 ): Promise<RecipeStatusResult> {
   return http.patch<RecipeStatusResult>(
@@ -393,6 +400,8 @@ export const unpublishRecipe = (id: string, token?: string | null) =>
   changeRecipeStatus(id, "unpublish", token);
 export const archiveRecipe = (id: string, token?: string | null) =>
   changeRecipeStatus(id, "archive", token);
+export const restoreRecipe = (id: string, token?: string | null) =>
+  changeRecipeStatus(id, "restore", token);
 
 export async function deleteRecipe(
   id: string,

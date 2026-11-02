@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { Edit3, Plus } from "lucide-react";
+import { Edit3, Plus, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 
 import { ConfirmDialog } from "@/components/ConfirmDialog";
@@ -21,6 +21,7 @@ import {
   getMyRecipes,
   getRecipeValidation,
   publishRecipe,
+  restoreRecipe,
   unpublishRecipe,
   type RecipeSummary,
 } from "@/lib/api";
@@ -203,6 +204,24 @@ export default function DashboardRecipesPage() {
             }
           >
             Lưu trữ
+          </Button>
+        )}
+        {recipe.status === "Archived" && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={busy}
+            onClick={() =>
+              runAction(
+                recipe,
+                () => restoreRecipe(recipe.id, token),
+                "Đã khôi phục công thức về bản nháp."
+              )
+            }
+          >
+            <RotateCcw />
+            Khôi phục
           </Button>
         )}
         <Button
