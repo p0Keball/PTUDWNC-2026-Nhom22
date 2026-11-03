@@ -6,7 +6,7 @@ namespace FoodBlog.Domain.Exceptions;
 public sealed class RecipeStatusTransitionException : DomainException
 {
     public RecipeStatusTransitionException(string message)
-        : base(message, "RECIPE_INVALID_STATUS_TRANSITION")
+        : base(message, "RECIPE_STATUS_TRANSITION_INVALID")
     {
     }
 }
