@@ -39,7 +39,16 @@ public static class RecipeEndpoints
             pageSize = Math.Clamp(pageSize, 1, 50);
 
             var result = await sender.Send(new GetRecipesQuery(page, pageSize, categoryId, difficulty, maxCookTime, sort));
-            return Results.Ok(new { items = result.Items, totalCount = result.TotalCount, page = result.Page, pageSize = result.PageSize });
+            return Results.Ok(new
+            {
+                items = result.Items,
+                totalCount = result.TotalCount,
+                page = result.Page,
+                pageSize = result.PageSize,
+                totalPages = result.TotalPages,
+                hasNextPage = result.HasNextPage,
+                hasPreviousPage = result.HasPreviousPage
+            });
         }).CacheOutput("RecipeList");
 
         group.MapGet("/search", async (FoodBlogDbContext db, string? q, int page = 1, int pageSize = 12) =>
@@ -64,7 +73,17 @@ public static class RecipeEndpoints
                     r.Difficulty.ToString(), r.Status.ToString(), r.PublishedAt))
                 .ToListAsync();
 
-            return Results.Ok(new { items, totalCount = total, page, pageSize });
+            var totalPages = (int)Math.Ceiling(total / (double)pageSize);
+            return Results.Ok(new
+            {
+                items,
+                totalCount = total,
+                page,
+                pageSize,
+                totalPages,
+                hasNextPage = page < totalPages,
+                hasPreviousPage = page > 1
+            });
         });
 
         group.MapGet("/mine", async (ISender sender,
@@ -76,7 +95,16 @@ public static class RecipeEndpoints
             try
             {
                 var result = await sender.Send(new GetMyRecipesQuery(page, pageSize, status));
-                return Results.Ok(new { items = result.Items, totalCount = result.TotalCount, page = result.Page, pageSize = result.PageSize });
+                return Results.Ok(new
+                {
+                    items = result.Items,
+                    totalCount = result.TotalCount,
+                    page = result.Page,
+                    pageSize = result.PageSize,
+                    totalPages = result.TotalPages,
+                    hasNextPage = result.HasNextPage,
+                    hasPreviousPage = result.HasPreviousPage
+                });
             }
             catch (FluentValidation.ValidationException ex)
             {

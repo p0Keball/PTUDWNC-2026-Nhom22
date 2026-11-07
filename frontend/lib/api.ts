@@ -26,6 +26,10 @@ export interface RecipeListResponse {
   totalCount: number;
   page: number;
   pageSize: number;
+  /** Có ở /recipes, /recipes/mine, /recipes/search. */
+  totalPages?: number;
+  hasNextPage?: boolean;
+  hasPreviousPage?: boolean;
 }
 
 export interface RecipeDetail {
@@ -176,6 +180,9 @@ export interface SearchResponse {
   totalCount: number;
   page: number;
   pageSize: number;
+  totalPages?: number;
+  hasNextPage?: boolean;
+  hasPreviousPage?: boolean;
 }
 
 /* -------------------------------------------------------------------------- */

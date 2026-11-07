@@ -25,7 +25,7 @@ public sealed class GetMyRecipeByIdQueryHandler(IFoodBlogDbContext db, ICurrentU
             .Include(r => r.Ingredients)
             .Include(r => r.Images)
             .FirstOrDefaultAsync(
-                r => r.Id == req.Id && r.AuthorId == currentUser.UserId,
+                r => r.Id == req.Id && (currentUser.IsAdmin || r.AuthorId == currentUser.UserId),
                 ct);
 
         return recipe is null ? null : RecipeMapper.ToDetail(recipe);

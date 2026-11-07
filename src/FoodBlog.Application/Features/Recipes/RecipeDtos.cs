@@ -15,7 +15,12 @@ public record RecipeDetailDto(Guid Id, string Title, string Slug, string Descrip
 public record RecipeSummaryDto(Guid Id, string Title, string Slug, string Description,
     string? PrimaryImageUrl, int PrepTimeMinutes, int CookTimeMinutes, int Servings,
     string Difficulty, string Status, DateTime? PublishedAt);
-public record PagedResult<T>(List<T> Items, int TotalCount, int Page, int PageSize);
+public record PagedResult<T>(List<T> Items, int TotalCount, int Page, int PageSize)
+{
+    public int TotalPages => (int)Math.Ceiling(TotalCount / (double)Math.Max(PageSize, 1));
+    public bool HasNextPage => Page < TotalPages;
+    public bool HasPreviousPage => Page > 1;
+}
 public record RecipeStatusDto(Guid Id, string Status);
 
 public static class RecipeMapper

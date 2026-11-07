@@ -44,6 +44,8 @@ const SORTS = [
   { value: "createdAt", label: "Cũ nhất" },
   { value: "title", label: "Tên A → Z" },
   { value: "-title", label: "Tên Z → A" },
+  { value: "cookTime", label: "Nấu nhanh nhất" },
+  { value: "-cookTime", label: "Nấu lâu nhất" },
 ];
 
 interface RecipesPageProps {
