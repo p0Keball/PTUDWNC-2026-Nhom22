@@ -15,14 +15,14 @@ namespace FoodBlog.Application.Features.Auth.Commands.GoogleLogin;
 
 public sealed class GoogleLoginCommandHandler : IRequestHandler<GoogleLoginCommand, AuthResponseDto>
 {
-    private static readonly TimeSpan RefreshTokenLifetime = TimeSpan.FromDays(30);
-    private static readonly TimeSpan AccessTokenLifetime = TimeSpan.FromMinutes(15);
     private readonly UserManager<ApplicationUser> _userManager;
     private readonly SignInManager<ApplicationUser> _signInManager;
     private readonly IFoodBlogDbContext _db;
     private readonly HttpClient _httpClient;
     private readonly RoleManager<IdentityRole> _roleManager;
     private readonly GoogleOAuthOptions _googleOptions;
+    private readonly IJwtTokenService _jwtTokenService;
+    private readonly JwtOptions _jwtOptions;
 
     public GoogleLoginCommandHandler(
         UserManager<ApplicationUser> userManager,
@@ -30,7 +30,9 @@ public sealed class GoogleLoginCommandHandler : IRequestHandler<GoogleLoginComma
         IFoodBlogDbContext db,
         HttpClient httpClient,
         RoleManager<IdentityRole> roleManager,
-        IOptions<GoogleOAuthOptions> googleOptions)
+        IOptions<GoogleOAuthOptions> googleOptions,
+        IJwtTokenService jwtTokenService,
+        IOptions<JwtOptions> jwtOptions)
     {
         _userManager = userManager;
         _signInManager = signInManager;
@@ -38,6 +40,8 @@ public sealed class GoogleLoginCommandHandler : IRequestHandler<GoogleLoginComma
         _httpClient = httpClient;
         _roleManager = roleManager;
         _googleOptions = googleOptions.Value;
+        _jwtTokenService = jwtTokenService;
+        _jwtOptions = jwtOptions.Value;
     }
 
     public async Task<AuthResponseDto> Handle(
@@ -181,14 +185,15 @@ public sealed class GoogleLoginCommandHandler : IRequestHandler<GoogleLoginComma
         _db.RefreshTokens.Add(global::FoodBlog.Domain.Entities.RefreshToken.Create(
             user.Id,
             HashToken(rawRefreshToken),
-            DateTime.UtcNow.Add(RefreshTokenLifetime),
+            DateTime.UtcNow.AddDays(_jwtOptions.RefreshTokenDays),
             request.IpAddress));
         await _db.SaveChangesAsync(cancellationToken);
 
+        var (accessToken, expiresAt) = _jwtTokenService.CreateAccessToken(user, roles);
         return new AuthResponseDto(
-            AccessToken: string.Empty,
+            AccessToken: accessToken,
             RefreshToken: rawRefreshToken,
-            ExpiresAt: DateTime.UtcNow.Add(AccessTokenLifetime),
+            ExpiresAt: expiresAt,
             User: new UserDto(
                 user.Id,
                 user.Email ?? googleUser.Email,

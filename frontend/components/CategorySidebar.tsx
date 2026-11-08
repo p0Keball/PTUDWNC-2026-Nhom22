@@ -54,7 +54,7 @@ export default function CategorySidebar({
                 return (
                   <li key={category.id}>
                     <Link
-                      href={`/recipes?categoryId=${encodeURIComponent(category.id)}`}
+                      href={`/categories/${encodeURIComponent(category.slug)}`}
                       aria-current={active ? "page" : undefined}
                       className={cn(
                         "flex items-center justify-between gap-2 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground",

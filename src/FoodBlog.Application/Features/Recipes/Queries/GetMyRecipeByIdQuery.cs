@@ -24,6 +24,8 @@ public sealed class GetMyRecipeByIdQueryHandler(IFoodBlogDbContext db, ICurrentU
             .Include(r => r.Steps)
             .Include(r => r.Ingredients)
             .Include(r => r.Images)
+            .Include(r => r.Category)
+            .Include(r => r.Author)
             .FirstOrDefaultAsync(
                 r => r.Id == req.Id && (currentUser.IsAdmin || r.AuthorId == currentUser.UserId),
                 ct);

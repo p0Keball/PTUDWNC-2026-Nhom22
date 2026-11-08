@@ -233,6 +233,47 @@ export async function updateMyProfile(
   });
 }
 
+export async function changePassword(
+  input: { currentPassword: string; newPassword: string },
+  token?: string | null
+): Promise<{ message: string }> {
+  return http.post<{ message: string }>(
+    "/api/v1/auth/change-password",
+    input,
+    {
+      token,
+      cache: "no-store",
+      fallbackMessage: "Đổi mật khẩu thất bại.",
+    }
+  );
+}
+
+export async function forgotPassword(
+  input: { email: string }
+): Promise<{ message: string }> {
+  return http.post<{ message: string }>(
+    "/api/v1/auth/forgot-password",
+    input,
+    {
+      cache: "no-store",
+      fallbackMessage: "Gửi yêu cầu quên mật khẩu thất bại.",
+    }
+  );
+}
+
+export async function resetPassword(
+  input: { email: string; token: string; newPassword: string }
+): Promise<{ message: string }> {
+  return http.post<{ message: string }>(
+    "/api/v1/auth/reset-password",
+    input,
+    {
+      cache: "no-store",
+      fallbackMessage: "Đặt lại mật khẩu thất bại.",
+    }
+  );
+}
+
 export interface RecipeStatusResult {
   id: string;
   status: string;
@@ -744,10 +785,66 @@ export async function getRecipeValidation(
 /* Categories & search                                                        */
 /* -------------------------------------------------------------------------- */
 
-export async function getCategories(): Promise<Category[]> {
+export interface GetCategoriesOptions {
+  /**
+   * Bỏ qua Data Cache của Next. Dùng cho dashboard sau khi CRUD để danh sách
+   * không bị stale tới 1 giờ.
+   */
+  noStore?: boolean;
+}
+
+export async function getCategories(
+  options: GetCategoriesOptions = {}
+): Promise<Category[]> {
   return http.get<Category[]>("/api/v1/categories", {
-    next: { revalidate: 3600, tags: ["categories"] },
+    ...(options.noStore
+      ? { cache: "no-store" as const }
+      : { next: { revalidate: 3600, tags: ["categories"] } }),
     fallbackMessage: "Không tải được danh mục.",
+  });
+}
+
+export interface CategoryInput {
+  name: string;
+  description?: string | null;
+  imageUrl?: string | null;
+}
+
+export async function createCategory(
+  input: CategoryInput,
+  token?: string | null
+): Promise<Category> {
+  return http.post<Category>("/api/v1/categories", input, {
+    token,
+    cache: "no-store",
+    fallbackMessage: "Tạo danh mục thất bại.",
+  });
+}
+
+export async function updateCategory(
+  id: string,
+  input: CategoryInput,
+  token?: string | null
+): Promise<Category> {
+  return http.put<Category>(
+    `/api/v1/categories/${encodeURIComponent(id)}`,
+    input,
+    {
+      token,
+      cache: "no-store",
+      fallbackMessage: "Cập nhật danh mục thất bại.",
+    }
+  );
+}
+
+export async function deleteCategory(
+  id: string,
+  token?: string | null
+): Promise<void> {
+  return http.delete<void>(`/api/v1/categories/${encodeURIComponent(id)}`, {
+    token,
+    cache: "no-store",
+    fallbackMessage: "Xóa danh mục thất bại.",
   });
 }
 

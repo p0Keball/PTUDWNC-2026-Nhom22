@@ -10,6 +10,18 @@ using Microsoft.EntityFrameworkCore;
 
 namespace FoodBlog.Application.Features.Recipes.Commands;
 
+public record CreateRecipeStepDto(
+    string Title,
+    string Description,
+    int? TimerMinutes = null,
+    string? ImageUrl = null);
+
+public record CreateRecipeIngredientDto(
+    string Name,
+    decimal? Quantity = null,
+    string? Unit = null,
+    string? Notes = null);
+
 public record CreateRecipeCommand(
     string Title,
     string Description,
@@ -18,7 +30,10 @@ public record CreateRecipeCommand(
     int PrepTimeMinutes,
     int CookTimeMinutes,
     int Servings,
-    int Difficulty) : IRequest<RecipeDetailDto>;
+    int Difficulty,
+    List<CreateRecipeStepDto>? Steps = null,
+    List<CreateRecipeIngredientDto>? Ingredients = null,
+    NutritionDto? Nutrition = null) : IRequest<RecipeDetailDto>;
 
 public sealed class CreateRecipeCommandValidator : AbstractValidator<CreateRecipeCommand>
 {
@@ -35,6 +50,30 @@ public sealed class CreateRecipeCommandValidator : AbstractValidator<CreateRecip
         RuleFor(x => x.CookTimeMinutes).GreaterThanOrEqualTo(0).WithMessage("Thời gian nấu phải >= 0.");
         RuleFor(x => x.Servings).GreaterThan(0).WithMessage("Khẩu phần phải > 0.");
         RuleFor(x => x.Difficulty).InclusiveBetween(1, 4).WithMessage("Độ khó phải từ 1 đến 4.");
+
+        // FR-RCP-002: steps/ingredients là tuỳ chọn nhưng nếu có thì phải hợp lệ.
+        When(x => x.Steps is not null, () =>
+        {
+            RuleForEach(x => x.Steps).ChildRules(step =>
+            {
+                step.RuleFor(s => s.Title).NotEmpty().WithMessage("Tiêu đề bước không được để trống.");
+                step.RuleFor(s => s.Description).NotEmpty().WithMessage("Mô tả bước không được để trống.");
+                step.RuleFor(s => s.TimerMinutes).GreaterThanOrEqualTo(0)
+                    .When(s => s.TimerMinutes.HasValue)
+                    .WithMessage("Thời gian hẹn giờ phải >= 0.");
+            });
+        });
+
+        When(x => x.Ingredients is not null, () =>
+        {
+            RuleForEach(x => x.Ingredients).ChildRules(ingredient =>
+            {
+                ingredient.RuleFor(i => i.Name).NotEmpty().WithMessage("Tên nguyên liệu không được để trống.");
+                ingredient.RuleFor(i => i.Quantity).GreaterThan(0)
+                    .When(i => i.Quantity.HasValue)
+                    .WithMessage("Số lượng nguyên liệu phải > 0.");
+            });
+        });
     }
 }
 
@@ -63,6 +102,42 @@ public sealed class CreateRecipeCommandHandler(IFoodBlogDbContext db, ICurrentUs
             Status = RecipeStatus.Draft,
             AuthorId = currentUser.UserId
         };
+
+        // FR-RCP-002: cho phép tạo kèm steps/ingredients/nutrition trong cùng request.
+        if (req.Steps is { Count: > 0 })
+        {
+            var stepNumber = 1;
+            foreach (var step in req.Steps)
+            {
+                recipe.Steps.Add(RecipeStep.Create(
+                    recipe.Id, stepNumber++, step.Title.Trim(), step.Description.Trim(),
+                    step.TimerMinutes, step.ImageUrl));
+            }
+        }
+
+        if (req.Ingredients is { Count: > 0 })
+        {
+            var orderIndex = 0;
+            foreach (var ingredient in req.Ingredients)
+            {
+                recipe.Ingredients.Add(RecipeIngredient.Create(
+                    recipe.Id, ingredient.Name.Trim(), ingredient.Quantity,
+                    ingredient.Unit, ingredient.Notes, orderIndex++));
+            }
+        }
+
+        if (req.Nutrition is not null)
+        {
+            recipe.Nutrition = new RecipeNutrition
+            {
+                Calories = req.Nutrition.Calories,
+                Protein = req.Nutrition.Protein,
+                Carbohydrates = req.Nutrition.Carbohydrates,
+                Fat = req.Nutrition.Fat,
+                Fiber = req.Nutrition.Fiber,
+                Sodium = req.Nutrition.Sodium
+            };
+        }
 
         db.Recipes.Add(recipe);
         await db.SaveChangesAsync(ct);

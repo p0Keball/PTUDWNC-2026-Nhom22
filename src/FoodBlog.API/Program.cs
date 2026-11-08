@@ -1,11 +1,13 @@
 using System.Security.Claims;
-using System.Threading.RateLimiting;
+using System.Text;
 using Asp.Versioning;
 using Asp.Versioning.Builder;
 using Hangfire;
 using Hangfire.PostgreSql;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
-using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.IdentityModel.Tokens;
 using FoodBlog.API;
 using FoodBlog.API.Endpoints;
 using FoodBlog.API.Middlewares;
@@ -23,8 +25,10 @@ using FoodBlog.Infrastructure.Services;
 using FoodBlog.Application.Features.Auth.Commands.GoogleLogin;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.HttpOverrides;
-using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using OpenTelemetry.Metrics;
+using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
 using Scalar.AspNetCore;
 using Serilog;
 
@@ -37,6 +41,31 @@ builder.Host.UseSerilog((context, services, configuration) => configuration
     .ReadFrom.Services(services)
     .Enrich.FromLogContext()
     .Enrich.WithProperty("Application", "FoodBlog.API"));
+
+// FR-OBS-003: distributed tracing + metrics qua OpenTelemetry.
+// OTLP exporter chỉ bật khi cấu hình endpoint (Collector/Jaeger/Grafana);
+// dev không có Collector vẫn có trace in-process để debug.
+var otlpEndpoint = builder.Configuration["OpenTelemetry:OtlpEndpoint"];
+builder.Services.AddOpenTelemetry()
+    .ConfigureResource(resource => resource.AddService("FoodBlog.API"))
+    .WithTracing(tracing =>
+    {
+        tracing
+            .AddAspNetCoreInstrumentation()
+            .AddHttpClientInstrumentation()
+            .AddEntityFrameworkCoreInstrumentation();
+        if (!string.IsNullOrWhiteSpace(otlpEndpoint))
+            tracing.AddOtlpExporter(options => options.Endpoint = new Uri(otlpEndpoint));
+    })
+    .WithMetrics(metrics =>
+    {
+        metrics
+            .AddAspNetCoreInstrumentation()
+            .AddHttpClientInstrumentation()
+            .AddMeter(FoodBlogMetrics.MeterName);
+        if (!string.IsNullOrWhiteSpace(otlpEndpoint))
+            metrics.AddOtlpExporter(options => options.Endpoint = new Uri(otlpEndpoint));
+    });
 
 builder.Services.AddOpenApi();
 builder.Services.AddApiVersioning(options =>
@@ -57,6 +86,23 @@ builder.Services.AddHangfire(configuration => configuration
     .UsePostgreSqlStorage(options =>
         options.UseNpgsqlConnection(builder.Configuration.GetConnectionString("Default"))));
 builder.Services.AddHangfireServer();
+// NFR-PERF-003 / 6.2: Redis là cache phân tán cho dữ liệu ít thay đổi
+// (danh mục). Khi chưa cấu hình Redis (dev/test) fallback về in-memory
+// distributed cache để ứng dụng vẫn chạy độc lập.
+var redisConnection = builder.Configuration["Redis:Connection"];
+if (!string.IsNullOrWhiteSpace(redisConnection) &&
+    !builder.Environment.IsEnvironment("Testing"))
+{
+    builder.Services.AddStackExchangeRedisCache(options =>
+    {
+        options.Configuration = redisConnection;
+        options.InstanceName = "FoodBlog:";
+    });
+}
+else
+{
+    builder.Services.AddDistributedMemoryCache();
+}
 builder.Services.AddMemoryCache();
 builder.Services.AddCors(options =>
 {
@@ -72,51 +118,12 @@ builder.Services.AddCors(options =>
             .AllowAnyHeader()
             .AllowAnyMethod()
             .AllowCredentials()
-            .WithExposedHeaders("Retry-After");
-    });
-});
-builder.Services.AddRateLimiter(options =>
-{
-    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-    options.OnRejected = async (context, cancellationToken) =>
-    {
-        context.HttpContext.Response.Headers.RetryAfter = "60";
-        await context.HttpContext.Response.WriteAsJsonAsync(
-            new ProblemDetails
-            {
-                Status = StatusCodes.Status429TooManyRequests,
-                Title = "Too many requests.",
-                Detail = "Request rate limit exceeded. Please try again later."
-            },
-            cancellationToken);
-    };
-    options.AddFixedWindowLimiter("general", limiter =>
-    {
-        limiter.PermitLimit = 100;
-        limiter.Window = TimeSpan.FromMinutes(1);
-        limiter.QueueLimit = 0;
-    });
-    options.AddPolicy("auth", context =>
-        RateLimitPartition.GetFixedWindowLimiter(
-            context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
-            _ => new FixedWindowRateLimiterOptions
-            {
-                PermitLimit = 10,
-                Window = TimeSpan.FromMinutes(1),
-                QueueLimit = 0,
-                AutoReplenishment = true
-            }));
-    options.AddFixedWindowLimiter("upload", limiter =>
-    {
-        limiter.PermitLimit = 5;
-        limiter.Window = TimeSpan.FromMinutes(1);
-        limiter.QueueLimit = 0;
-    });
-    options.AddFixedWindowLimiter("recipe-write", limiter =>
-    {
-        limiter.PermitLimit = 30;
-        limiter.Window = TimeSpan.FromMinutes(1);
-        limiter.QueueLimit = 0;
+            // NFR-SEC-003 / 5.2: client cần đọc được các header rate limit.
+            .WithExposedHeaders(
+                "Retry-After",
+                "X-RateLimit-Limit",
+                "X-RateLimit-Remaining",
+                "X-RateLimit-Reset");
     });
 });
 builder.Services.AddOutputCache(options =>
@@ -124,7 +131,11 @@ builder.Services.AddOutputCache(options =>
     options.AddPolicy("RecipeList", policy => policy
         .Tag("recipes")
         .Expire(TimeSpan.FromMinutes(15))
-        .SetVaryByQuery("page", "pageSize", "categoryId", "difficulty", "maxCookTime", "sort"));
+        .SetVaryByQuery("page", "pageSize", "categoryId", "difficulty", "maxCookTime", "minServings", "sort")
+        // Response thay đổi theo user (Author thấy Draft của mình, Admin thấy tất cả),
+        // nên cache phải tách theo token/cookie để không rò rỉ dữ liệu.
+        .SetVaryByHeader("Authorization")
+        .SetVaryByHeader("Cookie"));
 });
 builder.Services.AddHttpClient<GoogleLoginCommandHandler>();
 builder.Services.AddFileStorage(builder.Configuration);
@@ -179,6 +190,48 @@ builder.Services.ConfigureApplicationCookie(options =>
         return Task.CompletedTask;
     };
 });
+
+// FR-AUTH-002/004 + NFR-SEC-002: JWT HS256 cho REST API.
+// Giữ Identity cookie như scheme dự phòng để không phá vỡ luồng cũ;
+// request có header Authorization sẽ được xác thực bằng Bearer JWT.
+var jwtOptions = builder.Configuration
+    .GetSection(JwtOptions.SectionName)
+    .Get<JwtOptions>() ?? new JwtOptions();
+if (string.IsNullOrWhiteSpace(jwtOptions.Secret) || jwtOptions.Secret.Length < 32)
+    throw new InvalidOperationException(
+        "Jwt:Secret phải được cấu hình (tối thiểu 32 ký tự) qua appsettings hoặc biến môi trường Jwt__Secret.");
+
+builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection(JwtOptions.SectionName));
+builder.Services.AddSingleton<IJwtTokenService, JwtTokenService>();
+builder.Services.AddAuthentication(options =>
+    {
+        options.DefaultScheme = "Smart";
+        options.DefaultAuthenticateScheme = "Smart";
+        options.DefaultChallengeScheme = "Smart";
+    })
+    .AddPolicyScheme("Smart", "JWT Bearer hoặc Identity cookie", options =>
+    {
+        options.ForwardDefaultSelector = context =>
+            context.Request.Headers.ContainsKey("Authorization")
+                ? JwtBearerDefaults.AuthenticationScheme
+                : IdentityConstants.ApplicationScheme;
+    })
+    .AddJwtBearer(options =>
+    {
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidIssuer = jwtOptions.Issuer,
+            ValidateAudience = true,
+            ValidAudience = jwtOptions.Audience,
+            ValidateIssuerSigningKey = true,
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtOptions.Secret)),
+            ValidateLifetime = true,
+            ClockSkew = TimeSpan.Zero,
+            NameClaimType = ClaimTypes.NameIdentifier,
+            RoleClaimType = ClaimTypes.Role
+        };
+    });
 builder.Services.Configure<PasswordHasherOptions>(options =>
 {
     options.CompatibilityMode = PasswordHasherCompatibilityMode.IdentityV3;
@@ -189,7 +242,9 @@ var app = builder.Build();
 app.UseForwardedHeaders();
 app.UseMiddleware<CorrelationIdMiddleware>();
 app.UseCors("Frontend");
-app.UseRateLimiter();
+// NFR-SEC-003: rate limit theo IP + header X-RateLimit-* (thay cho UseRateLimiter
+// vì middleware built-in không trả số request còn lại cho response thành công).
+app.UseMiddleware<RateLimitHeadersMiddleware>();
 app.UseMiddleware<GlobalExceptionMiddleware>();
 app.UseAuthentication();
 // UserId chỉ có sau khi Authentication chạy -> push vào log context ở đây.

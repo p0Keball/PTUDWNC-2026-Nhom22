@@ -11,5 +11,8 @@ public sealed record UserDto(
     string Id,
     string Email,
     string FullName,
-    string Role
+    string Role,
+    string? UserName = null,
+    string? AvatarUrl = null,
+    string[]? Roles = null
 );

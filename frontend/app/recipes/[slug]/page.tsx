@@ -34,7 +34,7 @@ interface RecipePageProps {
   params: Promise<{ slug: string }>;
 }
 
-export const revalidate = 300;
+export const dynamic = "force-dynamic";
 
 function primaryImage(recipe: RecipeDetail) {
   return recipe.images.find((image) => image.isPrimary) ?? recipe.images[0] ?? null;

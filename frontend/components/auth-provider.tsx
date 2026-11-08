@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 
+import { setAccessTokenProvider } from "@/lib/auth-token";
 import { useAuthStore } from "@/store/auth-store";
 
 /**
@@ -10,6 +11,10 @@ import { useAuthStore } from "@/store/auth-store";
  */
 export function AuthProvider() {
   useEffect(() => {
+    // Nối API client với store: mọi request dùng seam getAccessToken()
+    // sẽ lấy JWT mới nhất sau login/refresh.
+    setAccessTokenProvider(() => useAuthStore.getState().accessToken);
+
     void useAuthStore.persist.rehydrate();
 
     const legacyToken =
@@ -27,7 +32,10 @@ export function AuthProvider() {
     };
 
     window.addEventListener("storage", onStorage);
-    return () => window.removeEventListener("storage", onStorage);
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      setAccessTokenProvider(null);
+    };
   }, []);
 
   return null;

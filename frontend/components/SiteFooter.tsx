@@ -7,6 +7,8 @@ const FOOTER_LINKS = [
     links: [
       { href: "/", label: "Trang chủ" },
       { href: "/recipes", label: "Tất cả công thức" },
+      { href: "/categories", label: "Danh mục" },
+      { href: "/search", label: "Tìm kiếm" },
     ],
   },
   {

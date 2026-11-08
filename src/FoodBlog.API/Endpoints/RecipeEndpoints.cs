@@ -21,6 +21,25 @@ public record UpdateRecipeRequest(string Title, string Description, string Instr
     int PrepTimeMinutes, int CookTimeMinutes, int Servings, int Difficulty, string RowVersion,
     NutritionDto? Nutrition = null);
 
+/// <summary>
+/// Projection dùng cho raw SQL FTS (websearch_to_tsquery + ts_rank).
+/// EF Core yêu cầu property settable và khớp tên cột trong câu SELECT.
+/// </summary>
+public sealed class RecipeSearchRow
+{
+    public Guid Id { get; set; }
+    public string Title { get; set; } = string.Empty;
+    public string Slug { get; set; } = string.Empty;
+    public string? Description { get; set; }
+    public string? PrimaryImageUrl { get; set; }
+    public int PrepTimeMinutes { get; set; }
+    public int CookTimeMinutes { get; set; }
+    public int Servings { get; set; }
+    public int Difficulty { get; set; }
+    public int Status { get; set; }
+    public DateTime? PublishedAt { get; set; }
+}
+
 public static class RecipeEndpoints
 {
     public static void MapRecipeEndpoints(this WebApplication app, ApiVersionSet apiVersionSet)
@@ -31,14 +50,20 @@ public static class RecipeEndpoints
             .WithTags("Recipes")
             .RequireRateLimiting("general");
 
-        group.MapGet("/", async (ISender sender,
+        group.MapGet("/", async (ISender sender, HttpContext http,
             int page = 1, int pageSize = 12, Guid? categoryId = null,
-            int? difficulty = null, int? maxCookTime = null, string sort = "-createdAt") =>
+            int? difficulty = null, int? maxCookTime = null, int? minServings = null,
+            string sort = "-createdAt") =>
         {
             page = Math.Max(page, 1);
             pageSize = Math.Clamp(pageSize, 1, 50);
 
-            var result = await sender.Send(new GetRecipesQuery(page, pageSize, categoryId, difficulty, maxCookTime, sort));
+            var userId = http.User.FindFirstValue(ClaimTypes.NameIdentifier)
+                ?? http.User.FindFirstValue("sub");
+            var isAdmin = http.User.IsInRole("Admin");
+            var result = await sender.Send(new GetRecipesQuery(
+                page, pageSize, categoryId, difficulty, maxCookTime, minServings,
+                sort, userId, isAdmin));
             return Results.Ok(new
             {
                 items = result.Items,
@@ -57,21 +82,50 @@ public static class RecipeEndpoints
                 return Results.UnprocessableEntity(new { title = "Thiếu từ khóa tìm kiếm.", errors = new { q = new[] { "q là bắt buộc." } } });
             page = Math.Max(page, 1);
             pageSize = Math.Clamp(pageSize, 1, 50);
+            var term = q.Trim();
 
+            // FR-SRCH-001: PostgreSQL FTS + unaccent, cấu hình 'simple' phù hợp
+            // tiếng Việt (không stemming tiếng Anh), xếp hạng bằng ts_rank().
             var baseQuery = db.Recipes.FromSql($"""
                 SELECT * FROM "Recipes"
                 WHERE "Status" = 1 AND "IsDeleted" = false
-                  AND "SearchVector" @@ plainto_tsquery('english', unaccent({q}))
+                  AND "SearchVector" @@ websearch_to_tsquery('simple', unaccent({term}))
                 """);
             var total = await baseQuery.CountAsync();
-            var items = await baseQuery
-                .OrderByDescending(r => r.PublishedAt)
-                .Skip((page - 1) * pageSize).Take(pageSize)
-                .Select(r => new FoodBlog.Application.Features.Recipes.RecipeSummaryDto(r.Id, r.Title, r.Slug, r.Description,
-                    r.Images.Where(i => i.IsPrimary).Select(i => i.OriginalUrl).FirstOrDefault(),
+
+            var offset = (page - 1) * pageSize;
+            var rows = await db.Database.SqlQuery<RecipeSearchRow>($"""
+                SELECT r."Id" AS "Id",
+                       r."Title" AS "Title",
+                       r."Slug" AS "Slug",
+                       r."Description" AS "Description",
+                       (SELECT i."OriginalUrl"
+                          FROM "RecipeImages" i
+                         WHERE i."RecipeId" = r."Id"
+                           AND i."IsPrimary" = true
+                           AND i."IsDeleted" = false
+                         ORDER BY i."OrderIndex"
+                         LIMIT 1) AS "PrimaryImageUrl",
+                       r."PrepTimeMinutes" AS "PrepTimeMinutes",
+                       r."CookTimeMinutes" AS "CookTimeMinutes",
+                       r."Servings" AS "Servings",
+                       r."Difficulty" AS "Difficulty",
+                       r."Status" AS "Status",
+                       r."PublishedAt" AS "PublishedAt"
+                  FROM "Recipes" r
+                 WHERE r."Status" = 1 AND r."IsDeleted" = false
+                   AND r."SearchVector" @@ websearch_to_tsquery('simple', unaccent({term}))
+                 ORDER BY ts_rank(r."SearchVector", websearch_to_tsquery('simple', unaccent({term}))) DESC,
+                          r."PublishedAt" DESC
+                 OFFSET {offset} LIMIT {pageSize}
+                """).ToListAsync();
+
+            var items = rows.Select(r => new FoodBlog.Application.Features.Recipes.RecipeSummaryDto(
+                    r.Id, r.Title, r.Slug, r.Description, r.PrimaryImageUrl,
                     r.PrepTimeMinutes, r.CookTimeMinutes, r.Servings,
-                    r.Difficulty.ToString(), r.Status.ToString(), r.PublishedAt))
-                .ToListAsync();
+                    ((Difficulty)r.Difficulty).ToString(), ((RecipeStatus)r.Status).ToString(),
+                    r.PublishedAt))
+                .ToList();
 
             var totalPages = (int)Math.Ceiling(total / (double)pageSize);
             return Results.Ok(new
@@ -156,6 +210,7 @@ public static class RecipeEndpoints
             {
                 var recipe = await sender.Send(req, ct);
                 await store.EvictByTagAsync("recipes", ct);
+                FoodBlogMetrics.RecipesCreated.Add(1);
                 await audit.LogAsync(new AuditLogEntry("RECIPE_CREATED", "Recipe", recipe.Id.ToString(),
                     $"Tạo công thức \"{recipe.Title}\""), ct);
                 return Results.Created($"/api/v1/recipes/{Uri.EscapeDataString(recipe.Slug)}", recipe);
@@ -184,6 +239,7 @@ public static class RecipeEndpoints
         {
             var result = await sender.Send(new PublishRecipeCommand(id), ct);
             await store.EvictByTagAsync("recipes", ct);
+            FoodBlogMetrics.RecipesPublished.Add(1);
             await audit.LogAsync(new AuditLogEntry("RECIPE_PUBLISHED", "Recipe", id.ToString(),
                 "Xuất bản công thức"), ct);
             return Results.Ok(result);

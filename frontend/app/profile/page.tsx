@@ -5,13 +5,12 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Avatar from "@/components/Avatar";
 import { ApiError, getMyProfile, updateMyProfile, type UserProfile } from "@/lib/api";
-
-function getToken() {
-  return typeof window === "undefined" ? null : localStorage.getItem("accessToken");
-}
+import { useAuthStore } from "@/store/auth-store";
 
 export default function ProfilePage() {
   const router = useRouter();
+  const accessToken = useAuthStore((state) => state.accessToken);
+  const hasHydrated = useAuthStore((state) => state.hasHydrated);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [displayName, setDisplayName] = useState("");
   const [avatarUrl, setAvatarUrl] = useState("");
@@ -22,12 +21,12 @@ export default function ProfilePage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const token = getToken();
-    if (!token) {
+    if (!hasHydrated) return;
+    if (!accessToken) {
       router.replace("/login");
       return;
     }
-    getMyProfile(token)
+    getMyProfile(accessToken)
       .then((data) => {
         setProfile(data);
         setDisplayName(data.displayName);
@@ -36,22 +35,21 @@ export default function ProfilePage() {
       })
       .catch((err) => {
         if (err instanceof ApiError && err.status === 401) {
-          localStorage.removeItem("accessToken");
+          useAuthStore.getState().clearSession();
           router.replace("/login");
         } else setError("Không tải được hồ sơ.");
       })
       .finally(() => setLoading(false));
-  }, [router]);
+  }, [accessToken, hasHydrated, router]);
 
   const save = async (event: FormEvent) => {
     event.preventDefault();
-    const token = getToken();
-    if (!token) return router.replace("/login");
+    if (!accessToken) return router.replace("/login");
     setSaving(true);
     setError(null);
     setMessage(null);
     try {
-      const updated = await updateMyProfile({ displayName, avatarUrl, bio }, token);
+      const updated = await updateMyProfile({ displayName, avatarUrl, bio }, accessToken);
       setProfile(updated);
       setMessage("Đã cập nhật hồ sơ.");
     } catch (err) {

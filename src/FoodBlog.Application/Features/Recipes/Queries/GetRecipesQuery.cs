@@ -12,7 +12,10 @@ public record GetRecipesQuery(
     Guid? CategoryId = null,
     int? Difficulty = null,
     int? MaxCookTime = null,
-    string Sort = "-createdAt") : IRequest<PagedResult<RecipeSummaryDto>>;
+    int? MinServings = null,
+    string Sort = "-createdAt",
+    string? CurrentUserId = null,
+    bool IsAdmin = false) : IRequest<PagedResult<RecipeSummaryDto>>;
 
 public sealed class GetRecipesQueryValidator : AbstractValidator<GetRecipesQuery>
 {
@@ -30,13 +33,35 @@ public sealed class GetRecipesQueryHandler(IFoodBlogDbContext db) : IRequestHand
         var page = Math.Max(req.Page, 1);
         var pageSize = Math.Clamp(req.PageSize, 1, 50);
 
-        var query = db.Recipes.Where(r => r.Status == RecipeStatus.Published);
+        var query = db.Recipes.AsQueryable();
+
+        // FR-RCP-001: Guest/Author khác chỉ thấy Published; Author thấy thêm
+        // Draft/Archived của chính mình; Admin thấy tất cả trạng thái.
+        if (req.IsAdmin)
+        {
+            // Admin: không lọc status.
+        }
+        else if (!string.IsNullOrWhiteSpace(req.CurrentUserId))
+        {
+            var userId = req.CurrentUserId;
+            query = query.Where(r =>
+                r.Status == RecipeStatus.Published ||
+                (r.Status != RecipeStatus.Published && r.AuthorId == userId));
+        }
+        else
+        {
+            query = query.Where(r => r.Status == RecipeStatus.Published);
+        }
+
         if (req.CategoryId.HasValue) query = query.Where(r => r.CategoryId == req.CategoryId);
         if (req.Difficulty.HasValue) query = query.Where(r => r.Difficulty == (Difficulty)req.Difficulty);
         if (req.MaxCookTime.HasValue) query = query.Where(r => r.CookTimeMinutes <= req.MaxCookTime);
+        if (req.MinServings.HasValue) query = query.Where(r => r.Servings >= req.MinServings);
+
         query = req.Sort switch
         {
             "createdAt" => query.OrderBy(r => r.CreatedAt),
+            "-createdAt" => query.OrderByDescending(r => r.CreatedAt),
             "title" => query.OrderBy(r => r.Title),
             "-title" => query.OrderByDescending(r => r.Title),
             "cookTime" => query.OrderBy(r => r.CookTimeMinutes),

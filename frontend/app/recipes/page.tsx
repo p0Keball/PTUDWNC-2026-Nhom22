@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Filter, SearchX } from "lucide-react";
+import { SearchX } from "lucide-react";
 
 import { Container } from "@/components/Container";
 import { EmptyState } from "@/components/EmptyState";
@@ -7,8 +7,8 @@ import { ErrorState } from "@/components/ErrorState";
 import { PageHeader } from "@/components/PageHeader";
 import Pagination from "@/components/Pagination";
 import RecipeCard from "@/components/RecipeCard";
+import RecipeFilterBar from "@/components/RecipeFilterBar";
 import { Button } from "@/components/ui/button";
-import { Select } from "@/components/ui/select";
 import {
   getCategories,
   getRecipes,
@@ -23,30 +23,6 @@ export const metadata = {
   description:
     "Danh sách công thức nấu ăn với bộ lọc theo danh mục, độ khó, thời gian nấu và sắp xếp.",
 };
-
-const DIFFICULTIES = [
-  { value: "1", label: "Dễ" },
-  { value: "2", label: "Trung bình" },
-  { value: "3", label: "Khó" },
-  { value: "4", label: "Chuyên gia" },
-];
-
-const COOK_TIMES = [
-  { value: "15", label: "≤ 15 phút" },
-  { value: "30", label: "≤ 30 phút" },
-  { value: "45", label: "≤ 45 phút" },
-  { value: "60", label: "≤ 60 phút" },
-  { value: "120", label: "≤ 120 phút" },
-];
-
-const SORTS = [
-  { value: "-createdAt", label: "Mới nhất" },
-  { value: "createdAt", label: "Cũ nhất" },
-  { value: "title", label: "Tên A → Z" },
-  { value: "-title", label: "Tên Z → A" },
-  { value: "cookTime", label: "Nấu nhanh nhất" },
-  { value: "-cookTime", label: "Nấu lâu nhất" },
-];
 
 interface RecipesPageProps {
   searchParams: Promise<{
@@ -97,9 +73,7 @@ export default async function RecipesPage({ searchParams }: RecipesPageProps) {
   }
 
   const categories = await categoriesPromise;
-
   const totalPages = Math.max(Math.ceil(data.totalCount / data.pageSize), 1);
-  const hasFilters = Object.values(filters).some(Boolean);
 
   return (
     <Container>
@@ -108,93 +82,16 @@ export default async function RecipesPage({ searchParams }: RecipesPageProps) {
         description={`${data.totalCount} công thức đã xuất bản. Lọc theo danh mục, độ khó hoặc thời gian nấu để tìm món phù hợp.`}
       />
 
-      <form
-        action="/recipes"
-        className="grid gap-3 rounded-xl border bg-card p-4 shadow-sm sm:grid-cols-2 lg:grid-cols-5"
-      >
-        <div className="flex flex-col gap-1.5">
-          <label htmlFor="categoryId" className="text-xs font-medium text-muted-foreground">
-            Danh mục
-          </label>
-          <Select
-            id="categoryId"
-            name="categoryId"
-            defaultValue={filters.categoryId ?? ""}
-          >
-            <option value="">Tất cả danh mục</option>
-            {categories.map((category) => (
-              <option key={category.id} value={category.id}>
-                {category.name}
-              </option>
-            ))}
-          </Select>
-        </div>
-
-        <div className="flex flex-col gap-1.5">
-          <label htmlFor="difficulty" className="text-xs font-medium text-muted-foreground">
-            Độ khó
-          </label>
-          <Select
-            id="difficulty"
-            name="difficulty"
-            defaultValue={filters.difficulty?.toString() ?? ""}
-          >
-            <option value="">Tất cả độ khó</option>
-            {DIFFICULTIES.map((item) => (
-              <option key={item.value} value={item.value}>
-                {item.label}
-              </option>
-            ))}
-          </Select>
-        </div>
-
-        <div className="flex flex-col gap-1.5">
-          <label htmlFor="maxCookTime" className="text-xs font-medium text-muted-foreground">
-            Thời gian nấu
-          </label>
-          <Select
-            id="maxCookTime"
-            name="maxCookTime"
-            defaultValue={filters.maxCookTime?.toString() ?? ""}
-          >
-            <option value="">Không giới hạn</option>
-            {COOK_TIMES.map((item) => (
-              <option key={item.value} value={item.value}>
-                {item.label}
-              </option>
-            ))}
-          </Select>
-        </div>
-
-        <div className="flex flex-col gap-1.5">
-          <label htmlFor="sort" className="text-xs font-medium text-muted-foreground">
-            Sắp xếp
-          </label>
-          <Select
-            id="sort"
-            name="sort"
-            defaultValue={filters.sort ?? "-createdAt"}
-          >
-            {SORTS.map((item) => (
-              <option key={item.value} value={item.value}>
-                {item.label}
-              </option>
-            ))}
-          </Select>
-        </div>
-
-        <div className="flex items-end gap-2">
-          <Button type="submit" className="flex-1">
-            <Filter />
-            Lọc
-          </Button>
-          {hasFilters && (
-            <Button asChild variant="outline">
-              <Link href="/recipes">Xóa lọc</Link>
-            </Button>
-          )}
-        </div>
-      </form>
+      <RecipeFilterBar
+        categories={categories}
+        initialFilters={{
+          categoryId: params.categoryId,
+          difficulty: params.difficulty,
+          maxCookTime: params.maxCookTime,
+          sort: params.sort,
+        }}
+        totalCount={data.totalCount}
+      />
 
       {data.items.length === 0 ? (
         <EmptyState

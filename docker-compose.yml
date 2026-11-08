@@ -11,6 +11,11 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U foodblog -d foodblog"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
 
   minio:
     image: quay.io/minio/aistor/minio:latest
@@ -34,6 +39,11 @@ services:
       - "6379:6379"
     volumes:
       - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
 
   seq:
     image: datalust/seq:latest
@@ -47,6 +57,62 @@ services:
       - "5341:5341"
     volumes:
       - seqdata:/data
+
+  api:
+    build:
+      context: .
+      dockerfile: src/FoodBlog.API/Dockerfile
+    container_name: foodblog-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_started
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__Default: Host=postgres;Port=5432;Database=foodblog;Username=foodblog;Password=foodblog123
+      Redis__Connection: redis:6379
+      MinIO__Endpoint: minio:9000
+      MinIO__PublicUrl: http://localhost:9000
+      Cors__Origins__0: http://localhost:8080
+      Jwt__Secret: ${JWT_SECRET:-dev-only-foodblog-jwt-secret-change-me-2026}
+      Serilog__WriteTo__2__Args__serverUrl: http://seq:5341
+    expose:
+      - "8080"
+    ports:
+      - "8080:8080"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:8080
+        NEXT_PUBLIC_SITE_URL: http://localhost:8080
+    container_name: foodblog-frontend
+    restart: unless-stopped
+    depends_on:
+      - api
+    environment:
+      NODE_ENV: production
+    expose:
+      - "3000"
+
+  nginx:
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
+    container_name: foodblog-nginx
+    restart: unless-stopped
+    depends_on:
+      - api
+      - frontend
+    ports:
+      - "80:80"
 
 volumes:
   pgdata:

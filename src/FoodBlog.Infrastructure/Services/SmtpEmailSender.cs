@@ -65,4 +65,52 @@ public sealed class SmtpEmailSender : IEmailSender
 
         _logger.LogInformation("Welcome email sent to {RecipientEmail}.", recipientEmail);
     }
+
+    public async Task SendPasswordResetEmailAsync(
+        string recipientEmail,
+        string resetLink,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(_options.Host) ||
+            string.IsNullOrWhiteSpace(_options.FromAddress))
+        {
+            throw new InvalidOperationException("Email SMTP chưa được cấu hình.");
+        }
+
+        var message = new MimeMessage();
+        message.From.Add(new MailboxAddress(_options.FromName, _options.FromAddress));
+        message.To.Add(MailboxAddress.Parse(recipientEmail));
+        message.Subject = "Khôi phục mật khẩu - FoodBlog";
+        message.Body = new BodyBuilder
+        {
+            HtmlBody = $"""
+                <p>Xin chào,</p>
+                <p>Bạn yêu cầu khôi phục mật khẩu cho tài khoản FoodBlog.</p>
+                <p>Nhấn vào nút bên dưới để đặt lại mật khẩu. Liên kết này có hiệu lực trong 15 phút.</p>
+                <p><a href="{WebUtility.HtmlEncode(resetLink)}" style="background:#2563eb;color:#fff;padding:10px 20px;text-decoration:none;border-radius:6px;">Đặt lại mật khẩu</a></p>
+                <p>Nếu bạn không yêu cầu thao tác này, vui lòng bỏ qua email này.</p>
+                <p>Trân trọng,<br/>Đội ngũ FoodBlog</p>
+                """
+        }.ToMessageBody();
+
+        using var smtp = new SmtpClient();
+        var socketOptions = _options.UseSsl
+            ? _options.Port == 465
+                ? SecureSocketOptions.SslOnConnect
+                : SecureSocketOptions.StartTls
+            : SecureSocketOptions.None;
+        await smtp.ConnectAsync(
+            _options.Host,
+            _options.Port,
+            socketOptions,
+            cancellationToken);
+
+        if (!string.IsNullOrWhiteSpace(_options.Username))
+            await smtp.AuthenticateAsync(_options.Username, _options.Password, cancellationToken);
+
+        await smtp.SendAsync(message, cancellationToken);
+        await smtp.DisconnectAsync(true, cancellationToken);
+
+        _logger.LogInformation("Password reset email sent to {RecipientEmail}.", recipientEmail);
+    }
 }

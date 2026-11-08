@@ -1,0 +1,104 @@
+pages: 3
+
+--- PAGE 1 ---
+CÂU HỎI ÔN TẬP THI CUỐI KỲ 
+ 
+PHẦN I – LÝ THUYẾT 
+1. Phân tích ưu và nhược điểm của Monolithic Architecture. Trong trường hợp 
+nào bạn vẫn nên chọn Monolithic cho một dự án mới? 
+2. Giải thích Dependency Rule trong Clean Architecture. T ại sao Application 
+Layer không được import trực tiếp từ Infrastructure Layer? Điều gì xảy ra nếu 
+vi phạm quy tắc này? 
+3. Trong RESTful API design, khi nào nên dùng PUT và khi nào nên dùng 
+PATCH? Hãy đưa ra ví dụ cụ thể trong context của Culinary Blog. 
+4. Cursor-based pagination có ưu điểm gì so với Offset-based pagination? Ứng 
+dụng Culinary Blog của bạn đã sử dụng kỹ thuật nào? Giải thích lý do lựa 
+chọn giải pháp đó. 
+5. Giải thích t ại sao DTO (Data Transfer Object) quan tr ọng trong Clean 
+Architecture. Điều gì xảy ra nếu bạn trả về Entity trực tiếp từ API endpoint? 
+6. Phân biệt Authentication và Authorization. Cho ví dụ: Trong Culinary Blog, 
+hành động nào chỉ cần Authentication và hành động nào cần cả Authorization? 
+7. Tại sao JWT là stateless? Ưu và như ợc điểm của stateless authentication so 
+với session-based authentication truyền thống là gì? 
+8. Tại sao CORS không ph ải là biện pháp bảo mật API? Kẻ tấn công có thể 
+bypass CORS không? Trong trường hợp nào? 
+9. Resource-based authorization là gì? Hãy nêu 1 ví dụ trong ứng dụng Culinary 
+Blog và 1 ví dụ khác ngoài ứng dụng này. 
+10. Tại sao trong Clean Architecture, chúng ta cần Repository Pattern thêm vào 
+phía trên EF Core thay vì dùng DbContext trực tiếp? Hãy giải thích từ góc độ 
+testability và Dependency Inversion. 
+11. Unit of Work Pattern giải quyết vấn đề gì mà Repository Pattern một mình 
+không giải quyết được? Cho ví dụ một use case cụ thể trong Culinary Blog. 
+12. Giải thích Cartesian Explosion x ảy ra như th ế nào khi Include nhi ều 
+collection. Với recipe có 10 steps và 15 ingredients, s ố rows trong kết quả 
+SQL không dùng AsSplitQuery() là bao nhiêu? So sánh v ới khi dùng 
+AsSplitQuery(). 
+--- PAGE 2 ---
+13. Giải thích s ự khác biệt cốt lõi gi ữa React Server Components và Client 
+Components về bundle size và khả năng fetch data. Trong Culinary Blog, 
+trang/component nào nên là RSC và component nào cần "use client"? 
+14. Auth.js lưu session trong HTTP-only cookie thay vì localStorage. Giải thích 
+tại sao đây là lựa chọn bảo mật hơn. XSS ảnh hưởng khác nhau như thế nào 
+đến hai cách lưu trữ này? Điều gì thay đổi khi accessToken của backend được 
+đưa vào session? 
+15. Phân biệt Server State, Client State, URL State và Form State. Với mỗi loại, 
+giải thích tại sao công cụ được đề xuất (TanStack Query, Zustand, URL 
+params, React Hook Form) là phù hợp nhất. 
+16. Next.js <Image> tự động tạo các kích thước ảnh khác nhau dựa trên sizes 
+prop. Giải thích cách browser chọn ảnh nào để hiển thị và tại sao điều này 
+quan trọng cho Core Web Vitals. Vì sao Next.js 16 thay prop priority bằng 
+loading/fetchPriority/preload? 
+17. Giải thích sự khác biệt giữa Logging, Metrics và Distributed Tracing. Khi 
+nào bạn sẽ dùng từng loại để debug một vấn đề performance trong Culinary 
+Blog? 
+18. Khi xây dựng API, người ta thường định nghĩa thêm 3 endpoints: /health, 
+/health/live, và /health/ready với logic phân tách đúng. Tại sao cần tách biệt 
+liveness và readiness health checks? Nếu chỉ có một endpoint /health, điều gì 
+có thể xảy ra khi database bị chậm? 
+19. So sánh IMemoryCache và IDistributedCache. N ếu ứng dụng scale lên 3 
+instances, IMemoryCache có vấn đề gì? IDistributedCache giải quyết điều này 
+ra sao? 
+20. Full-Text Search là gì? Tại sao PostgreSQL dùng cấu hình "simple" thay vì 
+"english" cho Full-Text Search tiếng Việt? Kết quả khác nhau thế nào nếu 
+dùng "english" để tokenize "phở bò"? 
+ 
+PHẦN II – BÁO CÁO VÀ GIẢI THÍCH MÃ NGUỒN 
+1. Từng thành viên báo cáo những nội dung mình đã làm. 
+2. Giáo viên chỉ định các đoạn mã mà sinh viên đã cài đặt, sinh viên giải thích ý 
+nghĩa và chức năng của đoạn code đó. 
+3. Trả lời các câu hỏi liên quan tới thiết kế và cài đặt ứng dụng: 
+a. Ứng dụng có bao nhiêu module/tính năng? 
+--- PAGE 3 ---
+b. Nhóm bạn đã phát hiện những điểm mâu thuẫn nào trong file SRS do giáo 
+viên cung cấp? 
+c. Hướng giải quyết các mâu thuẫn đó là gì? Tại sao bạn chọn phương án đó? 
+d. Những điểm/tính năng mới (so với đặc tả trong file SRS) trong ứng dụng 
+mà bạn đã xây dựng. 
+e. Những tính năng mà bạn chưa cài đặt, những việc mà bạn chưa làm theo 
+phân công. Giải thích lý do. 
+ 
+PHẦN III – GIẢI QUYẾT VẤN ĐỀ 
+Giáo viên mô tả một yêu cầu/bài toán/tính năng mới, sinh viên nêu giải pháp thiết 
+kế, cài đặt; các bước thực hiện; giải thích lý do, ưu - nhược điểm của giải pháp đã 
+chọn. Ví dụ: 
+1. Để bổ sung tính năng cho người dùng đăng ký nhận thông báo qua email khi 
+hệ thống Culinary Blog có xuất bản bài viết/công thức món ăn mới, bạn cần 
+làm gì? 
+2. Giả sử, hệ thống Culinary Blog có lư ợt truy cập hàng ngày lớn. Chủ kênh 
+muốn thêm chức năng đặt banner quảng cáo có thu phí. Hãy trình bày gi ải 
+pháp để bổ sung tính năng này. 
+3. Chủ kênh Culinary Blog muốn cung cấp tính năng RSS feed, bạn hãy trình 
+bày cách làm. 
+4. Làm thế nào để bổ sung tính năng chia sẻ bài viết ở trang Culinary Blog lên 
+mạng xã hội (Facebook, Twitter, …)? 
+5. Hãy trình bày các bước cần thực hiện để cho phép người dùng đánh giá (1-5 
+sao) công thức món ăn. 
+6. Để bổ sung module cho phép người dùng bình luận một công thức món ăn, 
+bạn cần làm những gì? 
+7. Chủ kênh muốn tạo thêm trang Liên h ệ để hiển thị thông tin liên h ệ cửa 
+hàng/công ty và cho phép người dùng nhập nội dung vào một form để liên hệ, 
+trao đổi với chủ kênh. Hãy cho biết những công việc cần thực hiện. 
+8. Bạn hãy nêu các bước thực hiện để bổ sung tính năng: Câu hỏi thường gặp. 
+9. Hãy nêu những rủi ro bảo mật đối với các form nhập liệu chẳng hạn như Liên 
+hệ, Bình luận. Nêu giải pháp để hạn chế các rủi ro này. 
+ 

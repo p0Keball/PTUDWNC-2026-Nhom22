@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   BookOpen,
+  FolderOpen,
   LayoutDashboard,
   PenLine,
   ScrollText,
@@ -21,6 +22,7 @@ const LINKS = [
 ];
 
 const ADMIN_LINKS = [
+  { href: "/dashboard/categories", label: "Quản lý danh mục", icon: FolderOpen },
   { href: "/admin/users", label: "Quản lý người dùng", icon: Users },
   { href: "/admin/logs", label: "Nhật ký hệ thống", icon: ScrollText },
 ];

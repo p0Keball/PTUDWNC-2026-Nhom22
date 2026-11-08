@@ -2,30 +2,36 @@ using System.Security.Cryptography;
 using System.Text;
 using FoodBlog.Application.Common.Interfaces;
 using FoodBlog.Application.DTOs.Auth;
+using FoodBlog.Application.Options;
 using FoodBlog.Domain.Entities;
 using MediatR;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace FoodBlog.Application.Features.Auth.Commands.RefreshToken;
 
 public sealed class RefreshTokenCommandHandler
     : IRequestHandler<RefreshTokenCommand, AuthResponseDto>
 {
-    private static readonly TimeSpan RefreshTokenLifetime = TimeSpan.FromDays(30);
-    private static readonly TimeSpan AccessTokenLifetime = TimeSpan.FromMinutes(15);
     private readonly IFoodBlogDbContext _db;
     private readonly UserManager<ApplicationUser> _userManager;
+    private readonly IJwtTokenService _jwtTokenService;
+    private readonly JwtOptions _jwtOptions;
     private readonly ILogger<RefreshTokenCommandHandler> _logger;
 
     public RefreshTokenCommandHandler(
         IFoodBlogDbContext db,
         UserManager<ApplicationUser> userManager,
+        IJwtTokenService jwtTokenService,
+        IOptions<JwtOptions> jwtOptions,
         ILogger<RefreshTokenCommandHandler> logger)
     {
         _db = db;
         _userManager = userManager;
+        _jwtTokenService = jwtTokenService;
+        _jwtOptions = jwtOptions.Value;
         _logger = logger;
     }
 
@@ -75,16 +81,17 @@ public sealed class RefreshTokenCommandHandler
         _db.RefreshTokens.Add(global::FoodBlog.Domain.Entities.RefreshToken.Create(
             storedToken.User.Id,
             replacementHash,
-            DateTime.UtcNow.Add(RefreshTokenLifetime),
+            DateTime.UtcNow.AddDays(_jwtOptions.RefreshTokenDays),
             request.IpAddress));
 
         await _db.SaveChangesAsync(cancellationToken);
 
         var roles = await _userManager.GetRolesAsync(storedToken.User);
+        var (accessToken, expiresAt) = _jwtTokenService.CreateAccessToken(storedToken.User, roles);
         return new AuthResponseDto(
-            AccessToken: string.Empty,
+            AccessToken: accessToken,
             RefreshToken: replacementToken,
-            ExpiresAt: DateTime.UtcNow.Add(AccessTokenLifetime),
+            ExpiresAt: expiresAt,
             User: new UserDto(
                 storedToken.User.Id,
                 storedToken.User.Email ?? string.Empty,

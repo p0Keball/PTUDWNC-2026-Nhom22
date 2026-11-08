@@ -24,6 +24,8 @@ public sealed class GetRecipeBySlugQueryHandler(IFoodBlogDbContext db) : IReques
             .Include(r => r.Steps)
             .Include(r => r.Ingredients)
             .Include(r => r.Images)
+            .Include(r => r.Category)
+            .Include(r => r.Author)
             .FirstOrDefaultAsync(r => r.Slug == req.Slug, ct);
 
         return recipe is null ? null : RecipeMapper.ToDetail(recipe);

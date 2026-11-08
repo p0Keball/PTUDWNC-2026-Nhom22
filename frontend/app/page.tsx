@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { getCategories, getRecipes } from "@/lib/api";
 
-export const revalidate = 3600;
+export const dynamic = "force-dynamic";
 
 export const metadata = {
   title: "Culinary Blog — Công thức nấu ăn",
@@ -20,7 +20,7 @@ export const metadata = {
 export default async function HomePage() {
   const [recipes, categories] = await Promise.all([
     // Build/SSR vẫn chạy được khi Backend chưa khởi động.
-    getRecipes(1, 6, {}, { revalidate: 3600 }).catch(() => ({
+    getRecipes(1, 6, {}, { noStore: true }).catch(() => ({
       items: [],
       totalCount: 0,
       page: 1,

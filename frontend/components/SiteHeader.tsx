@@ -12,6 +12,8 @@ import { useAuthStore } from "@/store/auth-store";
 const LINKS = [
   { href: "/", label: "Trang chủ" },
   { href: "/recipes", label: "Công thức" },
+  { href: "/categories", label: "Danh mục" },
+  { href: "/search", label: "Tìm kiếm" },
   { href: "/dashboard", label: "Dashboard" },
 ];
 

@@ -10,5 +10,11 @@ public interface ICategoryRepository : IRepository<Category>
     Task<List<Category>> ListOrderedWithRecipesAsync(CancellationToken ct = default);
     Task<int> CountPublishedRecipesAsync(Guid categoryId, CancellationToken ct = default);
     Task<int> CountAllRecipesAsync(Guid categoryId, CancellationToken ct = default);
-    Task<(List<Recipe> Items, int TotalCount)> GetPublishedRecipesAsync(Guid categoryId, int page, int pageSize, CancellationToken ct = default);
+    Task<(List<Recipe> Items, int TotalCount)> GetVisibleRecipesAsync(
+        Guid categoryId,
+        int page,
+        int pageSize,
+        string? currentUserId,
+        bool isAdmin,
+        CancellationToken ct = default);
 }

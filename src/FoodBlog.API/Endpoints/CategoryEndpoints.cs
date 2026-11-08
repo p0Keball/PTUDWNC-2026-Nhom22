@@ -6,14 +6,16 @@ using FoodBlog.Domain.Common;
 using FoodBlog.Domain.Entities;
 using FoodBlog.Domain.Enums;
 using FoodBlog.Domain.Exceptions;
-using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Caching.Distributed;
+using System.Security.Claims;
+using System.Text.Json;
 
 namespace FoodBlog.API.Endpoints;
 
 public record CategoryDto(Guid Id, string Name, string Slug, string? Description, string? ImageUrl, int OrderIndex, int RecipeCount);
 public record RecipeSummaryDto(Guid Id, string Title, string Slug, string Description,
     string? PrimaryImageUrl, int PrepTimeMinutes, int CookTimeMinutes, int Servings,
-    string Difficulty, DateTime? PublishedAt);
+    string Difficulty, string Status, DateTime? PublishedAt);
 public record CreateCategoryRequest(string Name, string? Description, string? ImageUrl);
 public record UpdateCategoryRequest(string Name, string? Description, string? ImageUrl);
 
@@ -28,23 +30,25 @@ public static class CategoryEndpoints
             .HasApiVersion(new ApiVersion(1, 0))
             .RequireRateLimiting("general");
 
-        group.MapGet("/", async (IUnitOfWork uow, IMemoryCache cache) =>
+        group.MapGet("/", async (IUnitOfWork uow, IDistributedCache cache, CancellationToken ct) =>
         {
-            if (cache.TryGetValue(CacheKey, out List<CategoryDto>? cached) && cached is not null)
+            var cached = await ReadCacheAsync(cache, ct);
+            if (cached is not null)
                 return Results.Ok(cached);
 
-            var categories = await uow.Categories.ListOrderedWithRecipesAsync();
+            var categories = await uow.Categories.ListOrderedWithRecipesAsync(ct);
             var items = categories
                 .Select(c => new CategoryDto(
                     c.Id, c.Name, c.Slug, c.Description, c.ImageUrl, c.OrderIndex,
                     c.Recipes.Count(r => r.Status == RecipeStatus.Published)))
                 .ToList();
 
-            cache.Set(CacheKey, items, TimeSpan.FromMinutes(60));
+            await WriteCacheAsync(cache, items, ct);
             return Results.Ok(items);
         });
 
-        group.MapGet("/{slug}", async (string slug, IUnitOfWork uow, int page = 1, int pageSize = 12) =>
+        group.MapGet("/{slug}", async (string slug, IUnitOfWork uow, HttpContext http,
+            int page = 1, int pageSize = 12) =>
         {
             page = Math.Max(page, 1);
             pageSize = Math.Clamp(pageSize, 1, 50);
@@ -52,23 +56,37 @@ public static class CategoryEndpoints
             var category = await uow.Categories.GetBySlugAsync(slug)
                 ?? throw new NotFoundException("Category not found", "CATEGORY_NOT_FOUND");
 
-            var (recipes, total) = await uow.Categories.GetPublishedRecipesAsync(category.Id, page, pageSize);
+            var userId = http.User.FindFirstValue(ClaimTypes.NameIdentifier)
+                ?? http.User.FindFirstValue("sub");
+            var isAdmin = http.User.IsInRole("Admin");
+            var (recipes, total) = await uow.Categories.GetVisibleRecipesAsync(
+                category.Id, page, pageSize, userId, isAdmin);
             var items = recipes
                 .Select(r => new RecipeSummaryDto(r.Id, r.Title, r.Slug, r.Description,
                     r.Images.Where(i => i.IsPrimary).Select(i => i.OriginalUrl).FirstOrDefault(),
                     r.PrepTimeMinutes, r.CookTimeMinutes, r.Servings,
-                    r.Difficulty.ToString(), r.PublishedAt))
+                    r.Difficulty.ToString(), r.Status.ToString(), r.PublishedAt))
                 .ToList();
+            var totalPages = (int)Math.Ceiling(total / (double)pageSize);
 
             return Results.Ok(new
             {
                 category = new CategoryDto(category.Id, category.Name, category.Slug,
                     category.Description, category.ImageUrl, category.OrderIndex, total),
-                recipes = new { items, totalCount = total, page, pageSize }
+                recipes = new
+                {
+                    items,
+                    totalCount = total,
+                    page,
+                    pageSize,
+                    totalPages,
+                    hasNextPage = page < totalPages,
+                    hasPreviousPage = page > 1
+                }
             });
         });
 
-        group.MapPost("/", async (CreateCategoryRequest req, IUnitOfWork uow, IMemoryCache cache) =>
+        group.MapPost("/", async (CreateCategoryRequest req, IUnitOfWork uow, IDistributedCache cache) =>
         {
             ThrowIfInvalidName(req.Name);
 
@@ -85,14 +103,14 @@ public static class CategoryEndpoints
             };
             await uow.Categories.AddAsync(category);
             await uow.SaveChangesAsync();
-            cache.Remove(CacheKey);
+            await cache.RemoveAsync(CacheKey);
 
             return Results.Created($"/api/v1/categories/{Uri.EscapeDataString(category.Slug)}",
                 new CategoryDto(category.Id, category.Name, category.Slug,
                     category.Description, category.ImageUrl, category.OrderIndex, 0));
         }).RequireAuthorization(new AuthorizeAttribute { Roles = "Admin" });
 
-        group.MapPut("/{id:guid}", async (Guid id, UpdateCategoryRequest req, IUnitOfWork uow, IMemoryCache cache) =>
+        group.MapPut("/{id:guid}", async (Guid id, UpdateCategoryRequest req, IUnitOfWork uow, IDistributedCache cache) =>
         {
             var category = await uow.Categories.GetByIdAsync(id)
                 ?? throw new NotFoundException("Category not found", "CATEGORY_NOT_FOUND");
@@ -107,14 +125,14 @@ public static class CategoryEndpoints
             category.Description = req.Description;
             category.ImageUrl = req.ImageUrl;
             await uow.SaveChangesAsync();
-            cache.Remove(CacheKey);
+            await cache.RemoveAsync(CacheKey);
 
             var count = await uow.Categories.CountPublishedRecipesAsync(id);
             return Results.Ok(new CategoryDto(category.Id, category.Name, category.Slug,
                 category.Description, category.ImageUrl, category.OrderIndex, count));
         }).RequireAuthorization(new AuthorizeAttribute { Roles = "Admin" });
 
-        group.MapDelete("/{id:guid}", async (Guid id, IUnitOfWork uow, IMemoryCache cache) =>
+        group.MapDelete("/{id:guid}", async (Guid id, IUnitOfWork uow, IDistributedCache cache) =>
         {
             var category = await uow.Categories.GetByIdAsync(id)
                 ?? throw new NotFoundException("Category not found", "CATEGORY_NOT_FOUND");
@@ -127,10 +145,33 @@ public static class CategoryEndpoints
 
             uow.Categories.Remove(category);
             await uow.SaveChangesAsync();
-            cache.Remove(CacheKey);
+            await cache.RemoveAsync(CacheKey);
             return Results.NoContent();
         }).RequireAuthorization(new AuthorizeAttribute { Roles = "Admin" });
     }
+
+    private static async Task<List<CategoryDto>?> ReadCacheAsync(
+        IDistributedCache cache,
+        CancellationToken ct)
+    {
+        var bytes = await cache.GetAsync(CacheKey, ct);
+        return bytes is null
+            ? null
+            : JsonSerializer.Deserialize<List<CategoryDto>>(bytes);
+    }
+
+    private static Task WriteCacheAsync(
+        IDistributedCache cache,
+        List<CategoryDto> items,
+        CancellationToken ct) =>
+        cache.SetAsync(
+            CacheKey,
+            JsonSerializer.SerializeToUtf8Bytes(items),
+            new DistributedCacheEntryOptions
+            {
+                AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(60)
+            },
+            ct);
 
     private static void ThrowIfInvalidName(string? name)
     {

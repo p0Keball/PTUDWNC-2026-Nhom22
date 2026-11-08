@@ -49,6 +49,8 @@ export default function RecipeGallery({ images }: Props) {
               (e.target as HTMLImageElement).src = FALLBACK_IMG;
           }}
           alt={active.altText ?? "recipe image"}
+          fetchPriority="high"
+          decoding="async"
           className="aspect-[16/9] w-full object-cover"
         />
         {active.thumbnailStatus === "pending" && (
@@ -80,6 +82,7 @@ export default function RecipeGallery({ images }: Props) {
                 }}
                 alt={img.altText ?? "thumbnail"}
                 loading="lazy"
+                decoding="async"
                 className="aspect-square w-full object-cover"
               />
             </button>

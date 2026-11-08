@@ -8,10 +8,13 @@ public record RecipeStepDto(Guid Id, int StepNumber, string Title, string Descri
 public record RecipeIngredientDto(Guid Id, string Name, decimal? Quantity, string? Unit, string? Notes, int OrderIndex);
 public record RecipeImageDto(Guid Id, string OriginalUrl, string? MediumUrl, string? ThumbnailUrl,
     string? AltText, bool IsPrimary, int OrderIndex, string ThumbnailStatus);
+public record CategorySummaryDto(Guid Id, string Name, string Slug);
+public record AuthorSummaryDto(string Id, string DisplayName, string? AvatarUrl);
 public record RecipeDetailDto(Guid Id, string Title, string Slug, string Description, string Instructions,
     int PrepTimeMinutes, int CookTimeMinutes, int Servings, string Difficulty, string Status,
     Guid CategoryId, string AuthorId, DateTime? PublishedAt, string RowVersion,
-    NutritionDto? Nutrition, List<RecipeStepDto> Steps, List<RecipeIngredientDto> Ingredients, List<RecipeImageDto> Images);
+    NutritionDto? Nutrition, List<RecipeStepDto> Steps, List<RecipeIngredientDto> Ingredients, List<RecipeImageDto> Images,
+    CategorySummaryDto? Category = null, AuthorSummaryDto? Author = null);
 public record RecipeSummaryDto(Guid Id, string Title, string Slug, string Description,
     string? PrimaryImageUrl, int PrepTimeMinutes, int CookTimeMinutes, int Servings,
     string Difficulty, string Status, DateTime? PublishedAt);
@@ -39,7 +42,9 @@ public static class RecipeMapper
             .Select(i => new RecipeIngredientDto(i.Id, i.Name, i.Quantity, i.Unit, i.Notes, i.OrderIndex)).ToList(),
         r.Images.OrderBy(i => i.OrderIndex)
             .Select(i => new RecipeImageDto(i.Id, i.OriginalUrl, i.MediumUrl, i.ThumbnailUrl, i.AltText, i.IsPrimary, i.OrderIndex,
-                i.ThumbnailUrl is null && i.MediumUrl is null ? "pending" : "ready")).ToList());
+                i.ThumbnailUrl is null && i.MediumUrl is null ? "pending" : "ready")).ToList(),
+        r.Category is null ? null : new CategorySummaryDto(r.Category.Id, r.Category.Name, r.Category.Slug),
+        r.Author is null ? null : new AuthorSummaryDto(r.Author.Id, r.Author.DisplayName, r.Author.AvatarUrl));
 
     public static RecipeSummaryDto ToSummary(Recipe r, string? primaryImageUrl) => new(
         r.Id, r.Title, r.Slug, r.Description, primaryImageUrl,

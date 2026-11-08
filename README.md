@@ -77,7 +77,7 @@ dotnet test tests/FoodBlog.Tests/FoodBlog.Tests.csproj
 dotnet test tests/FoodBlog.Tests/FoodBlog.Tests.csproj --filter "Category=RequiresMinIO"
 ```
 
-Đã có **67 test** cho:
+Đã có **75 test** cho:
 
 - Integration Test Steps / Ingredients / Image Upload (gọi HTTP thật qua `WebApplicationFactory`).
 - Image validation: MIME, magic bytes JPEG/PNG/WebP/AVIF, giới hạn 5MB.
