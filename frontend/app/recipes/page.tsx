@@ -30,6 +30,7 @@ interface RecipesPageProps {
     categoryId?: string;
     difficulty?: string;
     maxCookTime?: string;
+    minServings?: string;
     sort?: string;
   }>;
 }
@@ -46,6 +47,9 @@ export default async function RecipesPage({ searchParams }: RecipesPageProps) {
       : undefined,
     maxCookTime: params.maxCookTime
       ? Number.parseInt(params.maxCookTime, 10)
+      : undefined,
+    minServings: params.minServings
+      ? Number.parseInt(params.minServings, 10)
       : undefined,
     sort: params.sort || undefined,
   };
@@ -88,6 +92,7 @@ export default async function RecipesPage({ searchParams }: RecipesPageProps) {
           categoryId: params.categoryId,
           difficulty: params.difficulty,
           maxCookTime: params.maxCookTime,
+          minServings: params.minServings,
           sort: params.sort,
         }}
         totalCount={data.totalCount}
@@ -120,6 +125,7 @@ export default async function RecipesPage({ searchParams }: RecipesPageProps) {
           categoryId: filters.categoryId,
           difficulty: filters.difficulty,
           maxCookTime: filters.maxCookTime,
+          minServings: filters.minServings,
           sort: filters.sort,
         }}
       />

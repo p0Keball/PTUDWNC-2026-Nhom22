@@ -9,4 +9,6 @@ public sealed record UserProfileDto(
     string? Bio,
     string Role,
     bool IsActive,
-    DateTime CreatedAt);
+    DateTime CreatedAt,
+    // FR-AUTH-006: trạng thái xác nhận email phục vụ policy VerifiedAuthor.
+    bool EmailConfirmed);

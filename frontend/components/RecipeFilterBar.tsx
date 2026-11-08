@@ -23,6 +23,14 @@ const COOK_TIMES = [
   { value: "120", label: "≤ 120 phút" },
 ];
 
+const SERVINGS = [
+  { value: "1", label: "≥ 1 khẩu phần" },
+  { value: "2", label: "≥ 2 khẩu phần" },
+  { value: "4", label: "≥ 4 khẩu phần" },
+  { value: "6", label: "≥ 6 khẩu phần" },
+  { value: "8", label: "≥ 8 khẩu phần" },
+];
+
 const SORTS = [
   { value: "-createdAt", label: "Mới nhất" },
   { value: "createdAt", label: "Cũ nhất" },
@@ -38,6 +46,7 @@ interface RecipeFilterBarProps {
     categoryId?: string;
     difficulty?: string;
     maxCookTime?: string;
+    minServings?: string;
     sort?: string;
   };
   totalCount: number;
@@ -56,10 +65,15 @@ export default function RecipeFilterBar({
   const categoryId = initialFilters.categoryId ?? "";
   const difficulty = initialFilters.difficulty ?? "";
   const maxCookTime = initialFilters.maxCookTime ?? "";
+  const minServings = initialFilters.minServings ?? "";
   const sort = initialFilters.sort ?? "-createdAt";
 
   const hasFilters = Boolean(
-    categoryId || difficulty || maxCookTime || (sort && sort !== "-createdAt")
+    categoryId ||
+      difficulty ||
+      maxCookTime ||
+      minServings ||
+      (sort && sort !== "-createdAt")
   );
 
   const handleFilterChange = (key: string, value: string) => {
@@ -110,7 +124,7 @@ export default function RecipeFilterBar({
         )}
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         {/* Lọc theo Danh mục */}
         <div className="flex flex-col gap-1.5">
           <label htmlFor="categoryId" className="text-xs font-medium text-muted-foreground">
@@ -167,6 +181,27 @@ export default function RecipeFilterBar({
           >
             <option value="">Không giới hạn</option>
             {COOK_TIMES.map((item) => (
+              <option key={item.value} value={item.value}>
+                {item.label}
+              </option>
+            ))}
+          </Select>
+        </div>
+
+        {/* Lọc theo khẩu phần tối thiểu */}
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="minServings" className="text-xs font-medium text-muted-foreground">
+            Khẩu phần
+          </label>
+          <Select
+            id="minServings"
+            name="minServings"
+            value={minServings}
+            onChange={(e) => handleFilterChange("minServings", e.target.value)}
+            disabled={isPending}
+          >
+            <option value="">Tất cả khẩu phần</option>
+            {SERVINGS.map((item) => (
               <option key={item.value} value={item.value}>
                 {item.label}
               </option>

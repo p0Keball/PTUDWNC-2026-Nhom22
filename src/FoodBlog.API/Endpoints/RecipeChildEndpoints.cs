@@ -38,11 +38,11 @@ public static class RecipeChildEndpoints
         var group = app.MapGroup("/api/v{version:apiVersion}/recipes/{id:guid}")
             .WithApiVersionSet(apiVersionSet)
             .HasApiVersion(new ApiVersion(1, 0))
-            .RequireAuthorization()
+            .RequireAuthorization("VerifiedAuthor")
             .RequireRateLimiting("general");
 
         group.MapPost("/steps", async (Guid id, CreateStepRequest req, FoodBlogDbContext db,
-            ClaimsPrincipal user, CancellationToken ct) =>
+            IAuditLogger audit, ClaimsPrincipal user, CancellationToken ct) =>
         {
             var recipe = await db.Recipes.FirstOrDefaultAsync(r => r.Id == id, ct);
             if (recipe is null) return NotFound(id);
@@ -58,12 +58,14 @@ public static class RecipeChildEndpoints
             db.RecipeSteps.Add(step);
             await db.SaveChangesAsync(ct);
             await cache.EvictByTagAsync("recipes", ct);
+            await audit.LogAsync(new AuditLogEntry("STEP_CREATED", "RecipeStep", step.Id.ToString(),
+                $"Thêm bước {step.StepNumber} cho công thức {id}"), ct);
             return Results.Created($"/api/v1/recipes/{id}/steps/{step.Id}",
                 new RecipeStepDto(step.Id, step.StepNumber, step.Title, step.Description, step.TimerMinutes, step.ImageUrl));
         });
 
         group.MapPut("/steps/{stepId:guid}", async (Guid id, Guid stepId, UpdateStepRequest req,
-            FoodBlogDbContext db, ClaimsPrincipal user, CancellationToken ct) =>
+            FoodBlogDbContext db, IAuditLogger audit, ClaimsPrincipal user, CancellationToken ct) =>
         {
             var forbidden = await CheckOwnerAsync(db, id, user, ct);
             if (forbidden is not null) return forbidden;
@@ -75,26 +77,31 @@ public static class RecipeChildEndpoints
                 req.TimerMinutes, string.IsNullOrWhiteSpace(req.ImageUrl) ? null : req.ImageUrl.Trim());
             await db.SaveChangesAsync(ct);
             await cache.EvictByTagAsync("recipes", ct);
+            await audit.LogAsync(new AuditLogEntry("STEP_UPDATED", "RecipeStep", step.Id.ToString(),
+                $"Cập nhật bước {step.StepNumber} của công thức {id}"), ct);
             return Results.Ok(new RecipeStepDto(step.Id, step.StepNumber, step.Title, step.Description, step.TimerMinutes, step.ImageUrl));
         });
 
         group.MapDelete("/steps/{stepId:guid}", async (Guid id, Guid stepId, FoodBlogDbContext db,
-            ClaimsPrincipal user, CancellationToken ct) =>
+            IAuditLogger audit, ClaimsPrincipal user, CancellationToken ct) =>
         {
             var forbidden = await CheckOwnerAsync(db, id, user, ct);
             if (forbidden is not null) return forbidden;
             var step = await db.RecipeSteps.FirstOrDefaultAsync(s => s.Id == stepId && s.RecipeId == id, ct);
             if (step is null) return Results.NotFound(new { title = "Không tìm thấy bước thực hiện.", stepId });
+            var stepNumber = step.StepNumber;
             db.RecipeSteps.Remove(step);
             await db.SaveChangesAsync(ct);
             await RenumberStepsAsync(db, id);
             await cache.EvictByTagAsync("recipes", ct);
+            await audit.LogAsync(new AuditLogEntry("STEP_DELETED", "RecipeStep", stepId.ToString(),
+                $"Xóa bước {stepNumber} của công thức {id}"), ct);
             return Results.NoContent();
         });
 
         // Drag & Drop: FE gửi toàn bộ thứ tự mới sau khi kéo thả.
         group.MapPatch("/steps/reorder", async (Guid id, List<ReorderItemRequest> req, FoodBlogDbContext db,
-            ClaimsPrincipal user, CancellationToken ct) =>
+            IAuditLogger audit, ClaimsPrincipal user, CancellationToken ct) =>
         {
             var recipe = await db.Recipes.FirstOrDefaultAsync(r => r.Id == id, ct);
             if (recipe is null) return NotFound(id);
@@ -113,6 +120,8 @@ public static class RecipeChildEndpoints
                 byId[orderedIds[i]].Renumber(i + 1);
             await db.SaveChangesAsync(ct);
             await cache.EvictByTagAsync("recipes", ct);
+            await audit.LogAsync(new AuditLogEntry("STEPS_REORDERED", "Recipe", id.ToString(),
+                $"Sắp xếp lại {orderedIds.Count} bước của công thức {id}"), ct);
             var result = await db.RecipeSteps.Where(s => s.RecipeId == id).OrderBy(s => s.StepNumber)
                 .Select(s => new RecipeStepDto(s.Id, s.StepNumber, s.Title, s.Description, s.TimerMinutes, s.ImageUrl))
                 .ToListAsync(ct);
@@ -120,7 +129,7 @@ public static class RecipeChildEndpoints
         });
 
         group.MapPost("/ingredients", async (Guid id, CreateIngredientRequest req, FoodBlogDbContext db,
-            ClaimsPrincipal user, CancellationToken ct) =>
+            IAuditLogger audit, ClaimsPrincipal user, CancellationToken ct) =>
         {
             var recipe = await db.Recipes.FirstOrDefaultAsync(r => r.Id == id, ct);
             if (recipe is null) return NotFound(id);
@@ -146,12 +155,14 @@ public static class RecipeChildEndpoints
             db.RecipeIngredients.Add(ingredient);
             await db.SaveChangesAsync(ct);
             await cache.EvictByTagAsync("recipes", ct);
+            await audit.LogAsync(new AuditLogEntry("INGREDIENT_CREATED", "RecipeIngredient", ingredient.Id.ToString(),
+                $"Thêm nguyên liệu \"{ingredient.Name}\" cho công thức {id}"), ct);
             return Results.Created($"/api/v1/recipes/{id}/ingredients/{ingredient.Id}",
                 new RecipeIngredientDto(ingredient.Id, ingredient.Name, ingredient.Quantity, ingredient.Unit, ingredient.Notes, ingredient.OrderIndex));
         });
 
         group.MapPut("/ingredients/{ingId:guid}", async (Guid id, Guid ingId, UpdateIngredientRequest req,
-            FoodBlogDbContext db, ClaimsPrincipal user, CancellationToken ct) =>
+            FoodBlogDbContext db, IAuditLogger audit, ClaimsPrincipal user, CancellationToken ct) =>
         {
             var forbidden = await CheckOwnerAsync(db, id, user, ct);
             if (forbidden is not null) return forbidden;
@@ -174,25 +185,30 @@ public static class RecipeChildEndpoints
                 string.IsNullOrWhiteSpace(req.Notes) ? null : req.Notes.Trim());
             await db.SaveChangesAsync(ct);
             await cache.EvictByTagAsync("recipes", ct);
+            await audit.LogAsync(new AuditLogEntry("INGREDIENT_UPDATED", "RecipeIngredient", ingredient.Id.ToString(),
+                $"Cập nhật nguyên liệu \"{ingredient.Name}\" của công thức {id}"), ct);
             return Results.Ok(new RecipeIngredientDto(ingredient.Id, ingredient.Name, ingredient.Quantity, ingredient.Unit, ingredient.Notes, ingredient.OrderIndex));
         });
 
         group.MapDelete("/ingredients/{ingId:guid}", async (Guid id, Guid ingId, FoodBlogDbContext db,
-            ClaimsPrincipal user, CancellationToken ct) =>
+            IAuditLogger audit, ClaimsPrincipal user, CancellationToken ct) =>
         {
             var forbidden = await CheckOwnerAsync(db, id, user, ct);
             if (forbidden is not null) return forbidden;
             var ingredient = await db.RecipeIngredients.FirstOrDefaultAsync(i => i.Id == ingId && i.RecipeId == id, ct);
             if (ingredient is null) return Results.NotFound(new { title = "Không tìm thấy nguyên liệu.", ingId });
+            var name = ingredient.Name;
             db.RecipeIngredients.Remove(ingredient);
             await db.SaveChangesAsync(ct);
             await RenumberIngredientsAsync(db, id);
             await cache.EvictByTagAsync("recipes", ct);
+            await audit.LogAsync(new AuditLogEntry("INGREDIENT_DELETED", "RecipeIngredient", ingId.ToString(),
+                $"Xóa nguyên liệu \"{name}\" khỏi công thức {id}"), ct);
             return Results.NoContent();
         });
 
         group.MapPatch("/ingredients/reorder", async (Guid id, List<ReorderItemRequest> req,
-            FoodBlogDbContext db, ClaimsPrincipal user, CancellationToken ct) =>
+            FoodBlogDbContext db, IAuditLogger audit, ClaimsPrincipal user, CancellationToken ct) =>
         {
             var recipe = await db.Recipes.FirstOrDefaultAsync(r => r.Id == id, ct);
             if (recipe is null) return NotFound(id);
@@ -211,6 +227,8 @@ public static class RecipeChildEndpoints
                 byId[orderedIds[i]].SetOrder(i);
             await db.SaveChangesAsync(ct);
             await cache.EvictByTagAsync("recipes", ct);
+            await audit.LogAsync(new AuditLogEntry("INGREDIENTS_REORDERED", "Recipe", id.ToString(),
+                $"Sắp xếp lại {orderedIds.Count} nguyên liệu của công thức {id}"), ct);
             var result = await db.RecipeIngredients.Where(i => i.RecipeId == id).OrderBy(i => i.OrderIndex)
                 .Select(i => new RecipeIngredientDto(i.Id, i.Name, i.Quantity, i.Unit, i.Notes, i.OrderIndex))
                 .ToListAsync(ct);

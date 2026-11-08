@@ -259,6 +259,9 @@ namespace FoodBlog.Infrastructure.Migrations
                     b.Property<int>("PrepTimeMinutes")
                         .HasColumnType("integer");
 
+                    b.Property<string>("PreviousSlug")
+                        .HasColumnType("varchar(220)");
+
                     b.Property<DateTime?>("PublishedAt")
                         .HasColumnType("timestamptz");
 
@@ -293,6 +296,8 @@ namespace FoodBlog.Infrastructure.Migrations
                     b.HasIndex("CategoryId");
 
                     b.HasIndex("Difficulty");
+
+                    b.HasIndex("PreviousSlug");
 
                     b.HasIndex("SearchVector");
 

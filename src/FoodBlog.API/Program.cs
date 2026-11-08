@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using FoodBlog.API;
+using FoodBlog.API.Authorization;
 using FoodBlog.API.Endpoints;
 using FoodBlog.API.Middlewares;
 using FoodBlog.API.Services;
@@ -26,6 +27,7 @@ using FoodBlog.Application.Features.Auth.Commands.GoogleLogin;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
+using OpenTelemetry.Exporter;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
@@ -55,7 +57,12 @@ builder.Services.AddOpenTelemetry()
             .AddHttpClientInstrumentation()
             .AddEntityFrameworkCoreInstrumentation();
         if (!string.IsNullOrWhiteSpace(otlpEndpoint))
-            tracing.AddOtlpExporter(options => options.Endpoint = new Uri(otlpEndpoint));
+            tracing.AddOtlpExporter(options =>
+            {
+                options.Endpoint = new Uri(otlpEndpoint);
+                // Seq nhận OTLP qua HTTP/protobuf.
+                options.Protocol = OtlpExportProtocol.HttpProtobuf;
+            });
     })
     .WithMetrics(metrics =>
     {
@@ -64,7 +71,11 @@ builder.Services.AddOpenTelemetry()
             .AddHttpClientInstrumentation()
             .AddMeter(FoodBlogMetrics.MeterName);
         if (!string.IsNullOrWhiteSpace(otlpEndpoint))
-            metrics.AddOtlpExporter(options => options.Endpoint = new Uri(otlpEndpoint));
+            metrics.AddOtlpExporter(options =>
+            {
+                options.Endpoint = new Uri(otlpEndpoint);
+                options.Protocol = OtlpExportProtocol.HttpProtobuf;
+            });
     });
 
 builder.Services.AddOpenApi();
@@ -145,6 +156,10 @@ builder.Services.Configure<EmailOptions>(
     builder.Configuration.GetSection(EmailOptions.SectionName));
 builder.Services.AddScoped<IEmailSender, SmtpEmailSender>();
 builder.Services.AddScoped<IAuditLogger, AuditLogger>();
+builder.Services.Configure<SitemapOptions>(
+    builder.Configuration.GetSection(SitemapOptions.SectionName));
+// FR-SEO-001: typed client cho SitemapJob (gọi ping search engine).
+builder.Services.AddHttpClient<SitemapJob>();
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
     options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
@@ -158,7 +173,15 @@ builder.Services.AddScoped<IFoodBlogDbContext>(sp => sp.GetRequiredService<FoodB
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
-builder.Services.AddAuthorization();
+builder.Services.AddAuthorization(options =>
+{
+    // SRS 2.3 - tầng 3: Author phải xác nhận email mới được ghi dữ liệu.
+    options.AddPolicy("VerifiedAuthor", policy =>
+        policy.Requirements.Add(new EmailConfirmedRequirement()));
+});
+builder.Services.AddSingleton<
+    Microsoft.AspNetCore.Authorization.IAuthorizationHandler,
+    EmailConfirmedAuthorizationHandler>();
 builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>    {
         options.Password.RequiredLength = 8;
         options.Password.RequireDigit = true;
@@ -273,13 +296,23 @@ app.UseHangfireDashboard("/hangfire", new DashboardOptions
 // nên bỏ qua migrate + seed thật khi Environment = "Testing".
 if (!app.Environment.IsEnvironment("Testing"))
 {
-    using var scope = app.Services.CreateScope();
-    var db = scope.ServiceProvider.GetRequiredService<FoodBlogDbContext>();
-    await db.Database.MigrateAsync();
-    await FoodBlogSeeder.SeedAsync(app.Services);
+    using (var scope = app.Services.CreateScope())
+    {
+        var db = scope.ServiceProvider.GetRequiredService<FoodBlogDbContext>();
+        await db.Database.MigrateAsync();
+        await FoodBlogSeeder.SeedAsync(app.Services);
+    }
+
+    // FR-SEO-001: sinh sitemap hằng ngày lúc 02:00 UTC.
+    RecurringJob.AddOrUpdate<SitemapJob>(
+        "sitemap-generation",
+        job => job.GenerateAsync(CancellationToken.None),
+        "0 2 * * *");
 }
 
-if (app.Environment.IsDevelopment())
+// Tài liệu API (OpenAPI + Scalar) cần khả dụng cả ở Production để
+// phục vụ tích hợp; chỉ bỏ qua trong môi trường test.
+if (!app.Environment.IsEnvironment("Testing"))
 {
     app.MapOpenApi();
     app.MapScalarApiReference();

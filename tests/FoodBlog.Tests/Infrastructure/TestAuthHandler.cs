@@ -7,9 +7,11 @@ using Microsoft.Extensions.Options;
 namespace FoodBlog.Tests.Infrastructure;
 
 /// <summary>
-/// Xác thực giả lập cho integration test: luôn đăng nhập với user do
-/// <see cref="TestData.SeedRecipeAsync"/> tạo ra, để các endpoint yêu cầu
-/// quyền tác giả chạy được mà không cần cookie/Identity thật.
+/// Xác thực giả lập cho integration test:
+/// - Mặc định: đăng nhập với role Author (TestData.AuthorId).
+/// - Header X-Test-Anonymous: true -> Chưa đăng nhập (Guest).
+/// - Header X-Test-Role: Admin -> Đăng nhập với role Admin.
+/// - Header X-Test-UserId: {id} -> Đăng nhập với userId tùy biến.
 /// </summary>
 internal sealed class TestAuthHandler : AuthenticationHandler<AuthenticationSchemeOptions>
 {
@@ -25,13 +27,31 @@ internal sealed class TestAuthHandler : AuthenticationHandler<AuthenticationSche
 
     protected override Task<AuthenticateResult> HandleAuthenticateAsync()
     {
-        var claims = new[]
+        if (Request.Headers.ContainsKey("X-Test-Anonymous"))
         {
-            new Claim(ClaimTypes.NameIdentifier, TestData.AuthorId),
-            new Claim(ClaimTypes.Name, "Test Author"),
-            new Claim(ClaimTypes.Email, "author@foodblog.test"),
-            new Claim(ClaimTypes.Role, "Author"),
+            return Task.FromResult(AuthenticateResult.NoResult());
+        }
+
+        var userId = Request.Headers.TryGetValue("X-Test-UserId", out var uid)
+            ? uid.ToString()
+            : TestData.AuthorId;
+
+        var role = Request.Headers.TryGetValue("X-Test-Role", out var r)
+            ? r.ToString()
+            : "Author";
+
+        var claims = new List<Claim>
+        {
+            new(ClaimTypes.NameIdentifier, userId),
+            new(ClaimTypes.Name, $"Test User {userId}"),
+            new(ClaimTypes.Email, $"{userId}@foodblog.test"),
+            new(ClaimTypes.Role, role),
         };
+
+        if (role == "Admin")
+        {
+            claims.Add(new Claim(ClaimTypes.Role, "Author"));
+        }
 
         var identity = new ClaimsIdentity(claims, SchemeName);
         var principal = new ClaimsPrincipal(identity);

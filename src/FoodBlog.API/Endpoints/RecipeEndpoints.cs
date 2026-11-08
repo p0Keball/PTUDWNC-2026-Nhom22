@@ -76,7 +76,9 @@ public static class RecipeEndpoints
             });
         }).CacheOutput("RecipeList");
 
-        group.MapGet("/search", async (FoodBlogDbContext db, string? q, int page = 1, int pageSize = 12) =>
+        group.MapGet("/search", async (FoodBlogDbContext db, string? q, int page = 1, int pageSize = 12,
+            Guid? categoryId = null, int? difficulty = null, int? maxCookTime = null,
+            int? minServings = null, string sort = "-createdAt") =>
         {
             if (string.IsNullOrWhiteSpace(q))
                 return Results.UnprocessableEntity(new { title = "Thiếu từ khóa tìm kiếm.", errors = new { q = new[] { "q là bắt buộc." } } });
@@ -84,17 +86,60 @@ public static class RecipeEndpoints
             pageSize = Math.Clamp(pageSize, 1, 50);
             var term = q.Trim();
 
-            // FR-SRCH-001: PostgreSQL FTS + unaccent, cấu hình 'simple' phù hợp
-            // tiếng Việt (không stemming tiếng Anh), xếp hạng bằng ts_rank().
-            var baseQuery = db.Recipes.FromSql($"""
-                SELECT * FROM "Recipes"
-                WHERE "Status" = 1 AND "IsDeleted" = false
-                  AND "SearchVector" @@ websearch_to_tsquery('simple', unaccent({term}))
-                """);
-            var total = await baseQuery.CountAsync();
+            // FR-SRCH-001 / FR-SRCH-003: PostgreSQL FTS + unaccent, cấu hình 'simple'
+            // phù hợp tiếng Việt (không stemming tiếng Anh), xếp hạng bằng ts_rank().
+            // Các bộ lọc/sắp xếp được dựng bằng placeholder {n} để tham số hóa an toàn.
+            var parameters = new List<object> { term };
+            var conditions = new List<string>
+            {
+                "r.\"Status\" = 1",
+                "r.\"IsDeleted\" = false",
+                "r.\"SearchVector\" @@ websearch_to_tsquery('simple', unaccent({0}))"
+            };
 
-            var offset = (page - 1) * pageSize;
-            var rows = await db.Database.SqlQuery<RecipeSearchRow>($"""
+            if (categoryId.HasValue)
+            {
+                conditions.Add($"r.\"CategoryId\" = {{{parameters.Count}}}");
+                parameters.Add(categoryId.Value);
+            }
+            if (difficulty.HasValue)
+            {
+                conditions.Add($"r.\"Difficulty\" = {{{parameters.Count}}}");
+                parameters.Add((short)difficulty.Value);
+            }
+            if (maxCookTime.HasValue)
+            {
+                conditions.Add($"r.\"CookTimeMinutes\" <= {{{parameters.Count}}}");
+                parameters.Add(maxCookTime.Value);
+            }
+            if (minServings.HasValue)
+            {
+                conditions.Add($"r.\"Servings\" >= {{{parameters.Count}}}");
+                parameters.Add(minServings.Value);
+            }
+
+            var whereSql = string.Join(" AND ", conditions);
+            var orderBy = sort?.Trim() switch
+            {
+                "createdAt" => "r.\"CreatedAt\" ASC",
+                "-createdAt" => "r.\"CreatedAt\" DESC",
+                "title" => "r.\"Title\" ASC",
+                "-title" => "r.\"Title\" DESC",
+                "cookTime" => "r.\"CookTimeMinutes\" ASC",
+                "-cookTime" => "r.\"CookTimeMinutes\" DESC",
+                _ => "ts_rank(r.\"SearchVector\", websearch_to_tsquery('simple', unaccent({0}))) DESC, r.\"PublishedAt\" DESC"
+            };
+
+            var total = await db.Database
+                .SqlQueryRaw<int>(
+                    "SELECT COUNT(*)::int AS \"Value\" FROM \"Recipes\" r WHERE " + whereSql,
+                    parameters.ToArray())
+                .SingleAsync();
+
+            var offsetIndex = parameters.Count;
+            var offsetPlaceholder = "{" + offsetIndex + "}";
+            var limitPlaceholder = "{" + (offsetIndex + 1) + "}";
+            var sql = $"""
                 SELECT r."Id" AS "Id",
                        r."Title" AS "Title",
                        r."Slug" AS "Slug",
@@ -113,15 +158,17 @@ public static class RecipeEndpoints
                        r."Status" AS "Status",
                        r."PublishedAt" AS "PublishedAt"
                   FROM "Recipes" r
-                 WHERE r."Status" = 1 AND r."IsDeleted" = false
-                   AND r."SearchVector" @@ websearch_to_tsquery('simple', unaccent({term}))
-                 ORDER BY ts_rank(r."SearchVector", websearch_to_tsquery('simple', unaccent({term}))) DESC,
-                          r."PublishedAt" DESC
-                 OFFSET {offset} LIMIT {pageSize}
-                """).ToListAsync();
+                 WHERE {whereSql}
+                 ORDER BY {orderBy}
+                 OFFSET {offsetPlaceholder} LIMIT {limitPlaceholder}
+                """;
+            var rows = await db.Database
+                .SqlQueryRaw<RecipeSearchRow>(sql,
+                    parameters.Concat(new object[] { (page - 1) * pageSize, pageSize }).ToArray())
+                .ToListAsync();
 
             var items = rows.Select(r => new FoodBlog.Application.Features.Recipes.RecipeSummaryDto(
-                    r.Id, r.Title, r.Slug, r.Description, r.PrimaryImageUrl,
+                    r.Id, r.Title, r.Slug, r.Description ?? string.Empty, r.PrimaryImageUrl,
                     r.PrepTimeMinutes, r.CookTimeMinutes, r.Servings,
                     ((Difficulty)r.Difficulty).ToString(), ((RecipeStatus)r.Status).ToString(),
                     r.PublishedAt))
@@ -176,7 +223,7 @@ public static class RecipeEndpoints
                 : Results.Ok(recipe);
         });
 
-        group.MapGet("/{slug}", async (string slug, ISender sender, HttpContext http) =>
+        group.MapGet("/{slug}", async (string slug, ISender sender, FoodBlogDbContext db, HttpContext http) =>
         {
             RecipeDetailDto? recipe;
             try
@@ -188,7 +235,17 @@ public static class RecipeEndpoints
                 return Results.UnprocessableEntity(new { title = "Validation failed", errors = ToErrors(ex) });
             }
             if (recipe is null)
+            {
+                // FR-SEO-002: slug cũ sau khi đổi tiêu đề -> redirect 301 về slug hiện tại.
+                var currentSlug = await db.Recipes.AsNoTracking()
+                    .Where(r => r.PreviousSlug == slug && !r.IsDeleted)
+                    .Select(r => r.Slug)
+                    .FirstOrDefaultAsync();
+                if (currentSlug is not null)
+                    return Results.Redirect($"/api/v1/recipes/{Uri.EscapeDataString(currentSlug)}", permanent: true);
+
                 return Results.NotFound(new { code = "RECIPE_NOT_FOUND", title = "Không tìm thấy công thức.", slug });
+            }
             if (recipe.Status != RecipeStatus.Published.ToString())
             {
                 // Draft/Archived: chỉ chủ sở hữu hoặc Admin được xem (phục vụ trang edit).
@@ -219,7 +276,7 @@ public static class RecipeEndpoints
             {
                 return Results.UnprocessableEntity(new { title = "Validation failed", errors = ToErrors(ex) });
             }
-        }).RequireAuthorization().RequireRateLimiting("recipe-write");
+        }).RequireAuthorization("VerifiedAuthor").RequireRateLimiting("recipe-write");
 
         group.MapPut("/{id:guid}", async (Guid id, UpdateRecipeRequest req, ISender sender,
             IOutputCacheStore store, IAuditLogger audit, CancellationToken ct) =>
@@ -232,7 +289,7 @@ public static class RecipeEndpoints
             await audit.LogAsync(new AuditLogEntry("RECIPE_UPDATED", "Recipe", id.ToString(),
                 $"Cập nhật công thức \"{result.Title}\""), ct);
             return Results.Ok(result);
-        }).RequireAuthorization().RequireRateLimiting("recipe-write");
+        }).RequireAuthorization("VerifiedAuthor").RequireRateLimiting("recipe-write");
 
         group.MapPatch("/{id:guid}/publish", async (Guid id, ISender sender, IOutputCacheStore store,
             IAuditLogger audit, CancellationToken ct) =>
@@ -243,7 +300,7 @@ public static class RecipeEndpoints
             await audit.LogAsync(new AuditLogEntry("RECIPE_PUBLISHED", "Recipe", id.ToString(),
                 "Xuất bản công thức"), ct);
             return Results.Ok(result);
-        }).RequireAuthorization().RequireRateLimiting("recipe-write");
+        }).RequireAuthorization("VerifiedAuthor").RequireRateLimiting("recipe-write");
 
         group.MapPatch("/{id:guid}/unpublish", async (Guid id, ISender sender, IOutputCacheStore store,
             IAuditLogger audit, CancellationToken ct) =>
@@ -253,7 +310,7 @@ public static class RecipeEndpoints
             await audit.LogAsync(new AuditLogEntry("RECIPE_UNPUBLISHED", "Recipe", id.ToString(),
                 "Gỡ xuất bản công thức"), ct);
             return Results.Ok(result);
-        }).RequireAuthorization().RequireRateLimiting("recipe-write");
+        }).RequireAuthorization("VerifiedAuthor").RequireRateLimiting("recipe-write");
 
         group.MapPatch("/{id:guid}/archive", async (Guid id, ISender sender, IOutputCacheStore store,
             IAuditLogger audit, CancellationToken ct) =>
@@ -263,7 +320,7 @@ public static class RecipeEndpoints
             await audit.LogAsync(new AuditLogEntry("RECIPE_ARCHIVED", "Recipe", id.ToString(),
                 "Lưu trữ công thức"), ct);
             return Results.Ok(result);
-        }).RequireAuthorization().RequireRateLimiting("recipe-write");
+        }).RequireAuthorization("VerifiedAuthor").RequireRateLimiting("recipe-write");
 
         group.MapPatch("/{id:guid}/unarchive", async (Guid id, ISender sender, IOutputCacheStore store,
             IAuditLogger audit, CancellationToken ct) =>
@@ -273,7 +330,7 @@ public static class RecipeEndpoints
             await audit.LogAsync(new AuditLogEntry("RECIPE_UNARCHIVED", "Recipe", id.ToString(),
                 "Khôi phục công thức từ lưu trữ"), ct);
             return Results.Ok(result);
-        }).RequireAuthorization().RequireRateLimiting("recipe-write");
+        }).RequireAuthorization("VerifiedAuthor").RequireRateLimiting("recipe-write");
 
         group.MapDelete("/{id:guid}", async (Guid id, ISender sender, IOutputCacheStore store,
             IAuditLogger audit, CancellationToken ct) =>
@@ -283,7 +340,7 @@ public static class RecipeEndpoints
             await audit.LogAsync(new AuditLogEntry("RECIPE_DELETED", "Recipe", id.ToString(),
                 "Xóa công thức"), ct);
             return Results.NoContent();
-        }).RequireAuthorization().RequireRateLimiting("recipe-write");
+        }).RequireAuthorization("VerifiedAuthor").RequireRateLimiting("recipe-write");
     }
 
     private static Dictionary<string, string[]> ToErrors(FluentValidation.ValidationException ex) =>

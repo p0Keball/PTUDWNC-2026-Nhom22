@@ -38,7 +38,9 @@ public sealed class DeleteRecipeCommandHandler(
 
         var imageUrls = recipe.Images.Select(i => i.OriginalUrl).ToList();
 
-        recipe.IsDeleted = true;
+        // FR-RCP-007: xóa vĩnh viễn công thức. EF Core + cấu hình Cascade xóa
+        // Steps/Ingredients/Images; ảnh trên MinIO được dọn bất đồng bộ bên dưới.
+        uow.Recipes.Remove(recipe);
 
         await uow.SaveChangesAsync(ct);
 

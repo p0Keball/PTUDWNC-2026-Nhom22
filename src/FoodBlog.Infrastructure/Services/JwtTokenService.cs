@@ -38,6 +38,8 @@ public sealed class JwtTokenService : IJwtTokenService
             new(JwtRegisteredClaimNames.Email, user.Email ?? string.Empty),
             new(ClaimTypes.Email, user.Email ?? string.Empty),
             new(ClaimTypes.Name, user.DisplayName),
+            // SRS 2.3 - policy VerifiedAuthor đọc claim này thay vì query DB.
+            new("email_confirmed", user.EmailConfirmed ? "true" : "false"),
             new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString("N"))
         };
         claims.AddRange(roles.Select(role => new Claim(ClaimTypes.Role, role)));

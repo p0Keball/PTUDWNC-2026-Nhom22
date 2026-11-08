@@ -21,6 +21,7 @@ import { PageHeader } from "@/components/PageHeader";
 import RecipeContentEditor from "@/components/RecipeContentEditor";
 import RecipeForm, {
   mapBackendErrors,
+  toNutritionInput,
   validateRecipeForm,
   type RecipeFormErrors,
   type RecipeFormValues,
@@ -121,7 +122,17 @@ function toFormValues(detail: RecipeDetail): RecipeFormValues {
     cookTimeMinutes: String(detail.cookTimeMinutes),
     servings: String(detail.servings),
     difficulty: DIFFICULTY_TO_NUMBER[detail.difficulty] ?? "1",
+    nutritionCalories: toFormNumber(detail.nutrition?.calories),
+    nutritionProtein: toFormNumber(detail.nutrition?.protein),
+    nutritionCarbohydrates: toFormNumber(detail.nutrition?.carbohydrates),
+    nutritionFat: toFormNumber(detail.nutrition?.fat),
+    nutritionFiber: toFormNumber(detail.nutrition?.fiber),
+    nutritionSodium: toFormNumber(detail.nutrition?.sodium),
   };
+}
+
+function toFormNumber(value: number | null | undefined) {
+  return value == null ? "" : String(value);
 }
 
 function isLookupMiss(err: unknown) {
@@ -239,6 +250,7 @@ export default function EditRecipePage({
           cookTimeMinutes: Number(values.cookTimeMinutes),
           servings: Number(values.servings),
           difficulty: Number(values.difficulty),
+          nutrition: toNutritionInput(values),
           rowVersion: detail.rowVersion,
         },
         token ?? undefined

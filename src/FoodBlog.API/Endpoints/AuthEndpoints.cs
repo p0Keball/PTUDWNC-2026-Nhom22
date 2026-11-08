@@ -41,6 +41,8 @@ public static class AuthEndpoints
         group.MapPost("/login", Login);
         group.MapPost("/google", GoogleLogin);
         group.MapPost("/refresh", Refresh);
+        group.MapPost("/confirm-email", ConfirmEmail);
+        group.MapPost("/resend-confirmation", ResendConfirmation);
         group.MapPost("/change-password", ChangePassword).RequireAuthorization();
         group.MapPost("/forgot-password", ForgotPassword);
         group.MapPost("/reset-password", ResetPassword);
@@ -148,6 +150,11 @@ public static class AuthEndpoints
         await signInManager.SignInAsync(user, isPersistent: false);
         backgroundJobs.Enqueue<WelcomeEmailJob>(job =>
             job.SendAsync(user.Email!, user.DisplayName, CancellationToken.None));
+
+        // SRS 2.3 - policy VerifiedAuthor: gửi liên kết xác nhận email (double opt-in).
+        var emailConfirmationToken = await users.GenerateEmailConfirmationTokenAsync(user);
+        backgroundJobs.Enqueue<EmailConfirmationJob>(job =>
+            job.SendAsync(user.Email!, user.DisplayName, emailConfirmationToken, CancellationToken.None));
         await audit.LogAsync(new AuditLogEntry("USER_REGISTERED", "User", user.Id,
             $"Đăng ký tài khoản {user.Email}", UserId: user.Id, UserEmail: user.Email), ct);
 
@@ -242,6 +249,69 @@ public static class AuthEndpoints
         {
             return Results.Unauthorized();
         }
+    }
+
+    private static async Task<IResult> ConfirmEmail(
+        ConfirmEmailRequest request,
+        UserManager<ApplicationUser> users,
+        IAuditLogger audit,
+        CancellationToken ct)
+    {
+        var email = request.Email?.Trim();
+        if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(request.Token))
+            return Results.UnprocessableEntity(new
+            {
+                title = "Email và token xác nhận là bắt buộc."
+            });
+
+        var user = await users.FindByEmailAsync(email);
+        if (user is null)
+            return Results.NotFound(new { title = "Không tìm thấy tài khoản." });
+
+        if (user.EmailConfirmed)
+            return Results.Ok(new { message = "Email đã được xác nhận trước đó." });
+
+        // Identity token là Base64Url; query/form có thể biến '+' thành khoảng trắng.
+        var token = request.Token.Replace(' ', '+');
+        var result = await users.ConfirmEmailAsync(user, token);
+        if (!result.Succeeded)
+            return Results.UnprocessableEntity(new
+            {
+                title = "Token xác nhận không hợp lệ hoặc đã hết hạn.",
+                errors = result.Errors
+                    .GroupBy(error => error.Code)
+                    .ToDictionary(
+                        group => group.Key,
+                        group => group.Select(error => error.Description).ToArray())
+            });
+
+        await audit.LogAsync(new AuditLogEntry("USER_EMAIL_CONFIRMED", "User", user.Id,
+            $"Xác nhận email {user.Email}", UserId: user.Id, UserEmail: user.Email), ct);
+        return Results.Ok(new { message = "Xác nhận email thành công." });
+    }
+
+    private static async Task<IResult> ResendConfirmation(
+        ResendConfirmationRequest request,
+        UserManager<ApplicationUser> users,
+        IBackgroundJobClient backgroundJobs)
+    {
+        var email = request.Email?.Trim();
+        if (string.IsNullOrWhiteSpace(email))
+            return Results.UnprocessableEntity(new { title = "Email là bắt buộc." });
+
+        var user = await users.FindByEmailAsync(email);
+        // Không tiết lộ email có tồn tại hay không (chống user enumeration).
+        if (user is not null && !user.EmailConfirmed && user.Email is not null)
+        {
+            var token = await users.GenerateEmailConfirmationTokenAsync(user);
+            backgroundJobs.Enqueue<EmailConfirmationJob>(job =>
+                job.SendAsync(user.Email, user.DisplayName, token, CancellationToken.None));
+        }
+
+        return Results.Ok(new
+        {
+            message = "Nếu email tồn tại và chưa xác nhận, hệ thống đã gửi lại liên kết."
+        });
     }
 
     private static async Task<IResult> GoogleLogin(
@@ -460,5 +530,7 @@ public static class AuthEndpoints
 
     private sealed record LoginRequest(string? Email, string? Password);
     private sealed record RefreshRequest(string? RefreshToken);
+    private sealed record ConfirmEmailRequest(string? Email, string? Token);
+    private sealed record ResendConfirmationRequest(string? Email);
     private sealed record LogoutRequest(string? RefreshToken);
 }

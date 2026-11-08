@@ -30,6 +30,14 @@ const COOK_TIMES = [
   { value: "120", label: "≤ 120 phút" },
 ];
 
+const SERVINGS = [
+  { value: "1", label: "≥ 1 khẩu phần" },
+  { value: "2", label: "≥ 2 khẩu phần" },
+  { value: "4", label: "≥ 4 khẩu phần" },
+  { value: "6", label: "≥ 6 khẩu phần" },
+  { value: "8", label: "≥ 8 khẩu phần" },
+];
+
 const SORTS = [
   { value: "-createdAt", label: "Mới nhất" },
   { value: "createdAt", label: "Cũ nhất" },
@@ -59,6 +67,7 @@ interface SearchPageProps {
     categoryId?: string;
     difficulty?: string;
     maxCookTime?: string;
+    minServings?: string;
     sort?: string;
   }>;
 }
@@ -74,9 +83,12 @@ export default async function SearchPage({
   const categoryId = params.categoryId ?? "";
   const difficulty = params.difficulty ?? "";
   const maxCookTime = params.maxCookTime ?? "";
+  const minServings = params.minServings ?? "";
   const sort = params.sort ?? "-createdAt";
 
-  const hasFilters = Boolean(q || categoryId || difficulty || maxCookTime) || sort !== "-createdAt";
+  const hasFilters =
+    Boolean(q || categoryId || difficulty || maxCookTime || minServings) ||
+    sort !== "-createdAt";
 
   const [data, categories] = await Promise.all([
     q
@@ -87,6 +99,7 @@ export default async function SearchPage({
           categoryId: categoryId || undefined,
           difficulty: difficulty || undefined,
           maxCookTime: maxCookTime ? Number.parseInt(maxCookTime, 10) : undefined,
+          minServings: minServings ? Number.parseInt(minServings, 10) : undefined,
           sort,
         }).catch(() => null)
       : null,
@@ -181,6 +194,24 @@ export default async function SearchPage({
         </div>
 
         <div className="flex flex-col gap-1.5">
+          <label htmlFor="minServings" className="text-xs font-medium text-muted-foreground">
+            Khẩu phần
+          </label>
+          <Select
+            id="minServings"
+            name="minServings"
+            defaultValue={minServings}
+          >
+            <option value="">Tất cả khẩu phần</option>
+            {SERVINGS.map((item) => (
+              <option key={item.value} value={item.value}>
+                {item.label}
+              </option>
+            ))}
+          </Select>
+        </div>
+
+        <div className="flex flex-col gap-1.5">
           <label htmlFor="sort" className="text-xs font-medium text-muted-foreground">
             Sắp xếp
           </label>
@@ -254,6 +285,7 @@ export default async function SearchPage({
               categoryId,
               difficulty,
               maxCookTime,
+              minServings,
               sort,
             }}
           />

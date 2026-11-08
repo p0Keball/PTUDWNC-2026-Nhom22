@@ -101,11 +101,11 @@ export interface CreateRecipeInput {
   cookTimeMinutes: number;
   servings: number;
   difficulty: number;
+  nutrition?: RecipeNutritionInput | null;
 }
 
 export interface UpdateRecipeInput extends CreateRecipeInput {
   rowVersion: string;
-  nutrition?: RecipeNutritionInput | null;
 }
 
 export interface RecipeListParams {
@@ -113,6 +113,8 @@ export interface RecipeListParams {
   /** 1 = Dễ, 2 = Trung bình, 3 = Khó, 4 = Chuyên gia */
   difficulty?: number;
   maxCookTime?: number;
+  /** FR-SRCH-002: phục vụ tối thiểu n khẩu phần. */
+  minServings?: number;
   /** createdAt | -createdAt | title | -title */
   sort?: string;
 }
@@ -136,6 +138,8 @@ export interface UserProfile extends AuthUser {
   bio: string | null;
   isActive: boolean;
   createdAt: string;
+  /** FR-AUTH-006: trạng thái xác nhận email (policy VerifiedAuthor). */
+  emailConfirmed: boolean;
 }
 
 export interface UpdateProfileInput {
@@ -172,6 +176,8 @@ export interface SearchParams {
   categoryId?: string;
   difficulty?: string;
   maxCookTime?: number;
+  /** FR-SRCH-002: chỉ trả công thức phục vụ tối thiểu n khẩu phần. */
+  minServings?: number;
   sort?: string;
 }
 
@@ -231,6 +237,35 @@ export async function updateMyProfile(
     cache: "no-store",
     fallbackMessage: "Cập nhật hồ sơ thất bại.",
   });
+}
+
+export interface ConfirmEmailResponse {
+  message: string;
+}
+
+/** FR-AUTH-008: xác nhận địa chỉ email bằng token từ email. */
+export async function confirmEmail(input: {
+  email: string;
+  token: string;
+}): Promise<ConfirmEmailResponse> {
+  return http.post<ConfirmEmailResponse>("/api/v1/auth/confirm-email", input, {
+    cache: "no-store",
+    fallbackMessage: "Xác nhận email thất bại.",
+  });
+}
+
+/** FR-AUTH-008: gửi lại email xác nhận (idempotent, không lộ email tồn tại). */
+export async function resendConfirmation(input: {
+  email: string;
+}): Promise<ConfirmEmailResponse> {
+  return http.post<ConfirmEmailResponse>(
+    "/api/v1/auth/resend-confirmation",
+    input,
+    {
+      cache: "no-store",
+      fallbackMessage: "Không gửi lại được email xác nhận.",
+    }
+  );
 }
 
 export async function changePassword(
@@ -306,6 +341,7 @@ export async function getRecipes(
     categoryId: filters.categoryId,
     difficulty: filters.difficulty,
     maxCookTime: filters.maxCookTime,
+    minServings: filters.minServings,
     sort: filters.sort,
   });
   const hasFilters = Object.values(filters).some(
@@ -878,6 +914,7 @@ export async function searchRecipes(
       categoryId: params.categoryId,
       difficulty: params.difficulty,
       maxCookTime: params.maxCookTime,
+      minServings: params.minServings,
       sort: params.sort,
     })}`,
     {

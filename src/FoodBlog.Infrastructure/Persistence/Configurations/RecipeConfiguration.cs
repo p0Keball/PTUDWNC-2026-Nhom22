@@ -19,6 +19,8 @@ public class RecipeConfiguration : IEntityTypeConfiguration<Recipe>
             .HasColumnType("varchar(220)")
             .IsRequired();
         builder.HasIndex(r => r.Slug).IsUnique();
+        builder.Property(r => r.PreviousSlug).HasColumnType("varchar(220)");
+        builder.HasIndex(r => r.PreviousSlug);
         builder.Property(r => r.Description).HasColumnType("text").IsRequired();
         builder.Property(r => r.Instructions).HasColumnType("text").IsRequired();
         builder.Property(r => r.Difficulty).HasConversion<short>();

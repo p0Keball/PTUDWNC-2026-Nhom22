@@ -10,6 +10,7 @@ import { PageHeader } from "@/components/PageHeader";
 import RecipeForm, {
   emptyRecipeForm,
   mapBackendErrors,
+  toNutritionInput,
   validateRecipeForm,
   type RecipeFormErrors,
   type RecipeFormValues,
@@ -75,6 +76,7 @@ export default function CreateRecipePage() {
           cookTimeMinutes: Number(values.cookTimeMinutes),
           servings: Number(values.servings),
           difficulty: Number(values.difficulty),
+          nutrition: toNutritionInput(values),
         },
         token
       );

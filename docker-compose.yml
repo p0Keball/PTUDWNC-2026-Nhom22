@@ -71,6 +71,8 @@ services:
         condition: service_healthy
       minio:
         condition: service_started
+      seq:
+        condition: service_started
     environment:
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
@@ -79,8 +81,12 @@ services:
       MinIO__Endpoint: minio:9000
       MinIO__PublicUrl: http://localhost:9000
       Cors__Origins__0: http://localhost:8080
+      Cors__Origins__1: https://localhost
       Jwt__Secret: ${JWT_SECRET:-dev-only-foodblog-jwt-secret-change-me-2026}
       Serilog__WriteTo__2__Args__serverUrl: http://seq:5341
+      OpenTelemetry__OtlpEndpoint: http://seq:5341/ingest/otlp
+      Sitemap__BaseUrl: http://localhost
+      Sitemap__FetchUrl: http://nginx/sitemap.xml
     expose:
       - "8080"
     ports:
@@ -113,9 +119,31 @@ services:
       - frontend
     ports:
       - "80:80"
+      - "443:443"
+
+  # NFR-REL-004: sao lưu PostgreSQL hằng ngày lúc 03:00 UTC, giữ 30 ngày.
+  backup:
+    build:
+      context: ./db-backup
+      dockerfile: Dockerfile
+    container_name: foodblog-backup
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGDATABASE: foodblog
+      PGUSER: foodblog
+      PGPASSWORD: foodblog123
+      BACKUP_RETENTION_DAYS: "30"
+    volumes:
+      - backupdata:/backups
 
 volumes:
   pgdata:
   miniodata:
   redisdata:
   seqdata:
+  backupdata:

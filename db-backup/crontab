@@ -1,0 +1,2 @@
+# NFR-REL-004: chạy hằng ngày lúc 03:00 UTC (cron trong container dùng UTC).
+0 3 * * * sh /usr/local/bin/backup.sh >> /var/log/foodblog-backup.log 2>&1

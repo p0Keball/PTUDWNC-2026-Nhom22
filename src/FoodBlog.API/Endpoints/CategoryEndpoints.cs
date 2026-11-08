@@ -1,4 +1,5 @@
 using FoodBlog.Application.Contracts.Persistence;
+using FoodBlog.Application.Common.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Asp.Versioning;
 using Asp.Versioning.Builder;
@@ -30,9 +31,10 @@ public static class CategoryEndpoints
             .HasApiVersion(new ApiVersion(1, 0))
             .RequireRateLimiting("general");
 
-        group.MapGet("/", async (IUnitOfWork uow, IDistributedCache cache, CancellationToken ct) =>
+        group.MapGet("/", async (IUnitOfWork uow, IDistributedCache cache,
+            ILogger<Category> logger, CancellationToken ct) =>
         {
-            var cached = await ReadCacheAsync(cache, ct);
+            var cached = await ReadCacheAsync(cache, logger, ct);
             if (cached is not null)
                 return Results.Ok(cached);
 
@@ -43,7 +45,7 @@ public static class CategoryEndpoints
                     c.Recipes.Count(r => r.Status == RecipeStatus.Published)))
                 .ToList();
 
-            await WriteCacheAsync(cache, items, ct);
+            await WriteCacheAsync(cache, items, logger, ct);
             return Results.Ok(items);
         });
 
@@ -86,7 +88,8 @@ public static class CategoryEndpoints
             });
         });
 
-        group.MapPost("/", async (CreateCategoryRequest req, IUnitOfWork uow, IDistributedCache cache) =>
+        group.MapPost("/", async (CreateCategoryRequest req, IUnitOfWork uow, IDistributedCache cache,
+            IAuditLogger audit, ILogger<Category> logger, CancellationToken ct) =>
         {
             ThrowIfInvalidName(req.Name);
 
@@ -103,14 +106,17 @@ public static class CategoryEndpoints
             };
             await uow.Categories.AddAsync(category);
             await uow.SaveChangesAsync();
-            await cache.RemoveAsync(CacheKey);
+            await SafeRemoveCacheAsync(cache, logger, ct);
+            await audit.LogAsync(new AuditLogEntry("CATEGORY_CREATED", "Category", category.Id.ToString(),
+                $"Tạo danh mục \"{category.Name}\""), ct);
 
             return Results.Created($"/api/v1/categories/{Uri.EscapeDataString(category.Slug)}",
                 new CategoryDto(category.Id, category.Name, category.Slug,
                     category.Description, category.ImageUrl, category.OrderIndex, 0));
         }).RequireAuthorization(new AuthorizeAttribute { Roles = "Admin" });
 
-        group.MapPut("/{id:guid}", async (Guid id, UpdateCategoryRequest req, IUnitOfWork uow, IDistributedCache cache) =>
+        group.MapPut("/{id:guid}", async (Guid id, UpdateCategoryRequest req, IUnitOfWork uow,
+            IDistributedCache cache, IAuditLogger audit, ILogger<Category> logger, CancellationToken ct) =>
         {
             var category = await uow.Categories.GetByIdAsync(id)
                 ?? throw new NotFoundException("Category not found", "CATEGORY_NOT_FOUND");
@@ -125,14 +131,17 @@ public static class CategoryEndpoints
             category.Description = req.Description;
             category.ImageUrl = req.ImageUrl;
             await uow.SaveChangesAsync();
-            await cache.RemoveAsync(CacheKey);
+            await SafeRemoveCacheAsync(cache, logger, ct);
+            await audit.LogAsync(new AuditLogEntry("CATEGORY_UPDATED", "Category", category.Id.ToString(),
+                $"Cập nhật danh mục \"{category.Name}\""), ct);
 
             var count = await uow.Categories.CountPublishedRecipesAsync(id);
             return Results.Ok(new CategoryDto(category.Id, category.Name, category.Slug,
                 category.Description, category.ImageUrl, category.OrderIndex, count));
         }).RequireAuthorization(new AuthorizeAttribute { Roles = "Admin" });
 
-        group.MapDelete("/{id:guid}", async (Guid id, IUnitOfWork uow, IDistributedCache cache) =>
+        group.MapDelete("/{id:guid}", async (Guid id, IUnitOfWork uow, IDistributedCache cache,
+            IAuditLogger audit, ILogger<Category> logger, CancellationToken ct) =>
         {
             var category = await uow.Categories.GetByIdAsync(id)
                 ?? throw new NotFoundException("Category not found", "CATEGORY_NOT_FOUND");
@@ -143,35 +152,73 @@ public static class CategoryEndpoints
                     $"Danh mục còn chứa {recipeCount} công thức.",
                     "CATEGORY_DELETE_HAS_RECIPES");
 
+            var name = category.Name;
             uow.Categories.Remove(category);
             await uow.SaveChangesAsync();
-            await cache.RemoveAsync(CacheKey);
+            await SafeRemoveCacheAsync(cache, logger, ct);
+            await audit.LogAsync(new AuditLogEntry("CATEGORY_DELETED", "Category", id.ToString(),
+                $"Xóa danh mục \"{name}\""), ct);
             return Results.NoContent();
         }).RequireAuthorization(new AuthorizeAttribute { Roles = "Admin" });
     }
 
     private static async Task<List<CategoryDto>?> ReadCacheAsync(
         IDistributedCache cache,
+        ILogger logger,
         CancellationToken ct)
     {
-        var bytes = await cache.GetAsync(CacheKey, ct);
-        return bytes is null
-            ? null
-            : JsonSerializer.Deserialize<List<CategoryDto>>(bytes);
+        try
+        {
+            var bytes = await cache.GetAsync(CacheKey, ct);
+            return bytes is null
+                ? null
+                : JsonSerializer.Deserialize<List<CategoryDto>>(bytes);
+        }
+        catch (Exception ex)
+        {
+            // NFR-REL-003: Redis không khả dụng -> bỏ qua cache, đọc trực tiếp DB.
+            logger.LogWarning(ex, "Không đọc được cache danh mục, fallback về database.");
+            return null;
+        }
     }
 
-    private static Task WriteCacheAsync(
+    private static async Task WriteCacheAsync(
         IDistributedCache cache,
         List<CategoryDto> items,
-        CancellationToken ct) =>
-        cache.SetAsync(
-            CacheKey,
-            JsonSerializer.SerializeToUtf8Bytes(items),
-            new DistributedCacheEntryOptions
-            {
-                AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(60)
-            },
-            ct);
+        ILogger logger,
+        CancellationToken ct)
+    {
+        try
+        {
+            await cache.SetAsync(
+                CacheKey,
+                JsonSerializer.SerializeToUtf8Bytes(items),
+                new DistributedCacheEntryOptions
+                {
+                    AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(60)
+                },
+                ct);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Không ghi được cache danh mục, bỏ qua.");
+        }
+    }
+
+    private static async Task SafeRemoveCacheAsync(
+        IDistributedCache cache,
+        ILogger logger,
+        CancellationToken ct)
+    {
+        try
+        {
+            await cache.RemoveAsync(CacheKey, ct);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Không xóa được cache danh mục, bỏ qua.");
+        }
+    }
 
     private static void ThrowIfInvalidName(string? name)
     {

@@ -7,6 +7,8 @@ public class Recipe : BaseEntity
 {
     public string Title { get; set; } = string.Empty;
     public string Slug { get; set; } = string.Empty;
+    /// <summary>Slug cũ (nếu tiêu đề đổi) — dùng để redirect 301 về slug hiện tại.</summary>
+    public string? PreviousSlug { get; set; }
     public string Description { get; set; } = string.Empty;
     public string Instructions { get; set; } = string.Empty;
     public int PrepTimeMinutes { get; set; }

@@ -9,6 +9,13 @@ export interface RecipeFormValues {
   cookTimeMinutes: string;
   servings: string;
   difficulty: string;
+  // FR-RCP-003/004: thông tin dinh dưỡng (tùy chọn, owned entity RecipeNutrition).
+  nutritionCalories: string;
+  nutritionProtein: string;
+  nutritionCarbohydrates: string;
+  nutritionFat: string;
+  nutritionFiber: string;
+  nutritionSodium: string;
 }
 
 export const emptyRecipeForm: RecipeFormValues = {
@@ -20,6 +27,12 @@ export const emptyRecipeForm: RecipeFormValues = {
   cookTimeMinutes: "",
   servings: "",
   difficulty: "1",
+  nutritionCalories: "",
+  nutritionProtein: "",
+  nutritionCarbohydrates: "",
+  nutritionFat: "",
+  nutritionFiber: "",
+  nutritionSodium: "",
 };
 
 export type RecipeFormErrors = Partial<Record<keyof RecipeFormValues, string>>;
@@ -33,6 +46,18 @@ const BACKEND_KEY_MAP: Record<string, keyof RecipeFormValues> = {
   cooktimeMinutes: "cookTimeMinutes",
   servings: "servings",
   difficulty: "difficulty",
+  "nutrition.calories": "nutritionCalories",
+  "nutrition.protein": "nutritionProtein",
+  "nutrition.carbohydrates": "nutritionCarbohydrates",
+  "nutrition.fat": "nutritionFat",
+  "nutrition.fiber": "nutritionFiber",
+  "nutrition.sodium": "nutritionSodium",
+  calories: "nutritionCalories",
+  protein: "nutritionProtein",
+  carbohydrates: "nutritionCarbohydrates",
+  fat: "nutritionFat",
+  fiber: "nutritionFiber",
+  sodium: "nutritionSodium",
 };
 
 export function mapBackendErrors(errors: Record<string, string[]>): RecipeFormErrors {
@@ -71,7 +96,44 @@ export function validateRecipeForm(v: RecipeFormValues): RecipeFormErrors {
   const difficulty = Number(v.difficulty);
   if (![1, 2, 3, 4].includes(difficulty))
     errors.difficulty = "Độ khó phải từ 1 đến 4.";
+
+  // FR-RCP-003/004: dinh dưỡng là tùy chọn, nhưng nếu đã nhập thì phải là số >= 0.
+  const nutritionFields: Array<[keyof RecipeFormValues, string]> = [
+    ["nutritionCalories", "Calories"],
+    ["nutritionProtein", "Protein"],
+    ["nutritionCarbohydrates", "Carbohydrates"],
+    ["nutritionFat", "Fat"],
+    ["nutritionFiber", "Fiber"],
+    ["nutritionSodium", "Sodium"],
+  ];
+  for (const [field, label] of nutritionFields) {
+    const raw = v[field].trim();
+    if (!raw) continue;
+    const value = Number(raw);
+    if (!Number.isFinite(value) || value < 0)
+      errors[field] = `${label} phải là số >= 0.`;
+  }
   return errors;
+}
+
+/** Chuyển các field dinh dưỡng dạng chuỗi sang payload API (bỏ trống -> null). */
+export function toNutritionInput(values: RecipeFormValues) {
+  const parse = (raw: string) => {
+    const value = Number(raw.trim());
+    return raw.trim() && Number.isFinite(value) ? value : null;
+  };
+  const nutrition = {
+    calories: parse(values.nutritionCalories),
+    protein: parse(values.nutritionProtein),
+    carbohydrates: parse(values.nutritionCarbohydrates),
+    fat: parse(values.nutritionFat),
+    fiber: parse(values.nutritionFiber),
+    sodium: parse(values.nutritionSodium),
+  };
+  // Không gửi object rỗng để tránh tạo RecipeNutrition toàn null.
+  return Object.values(nutrition).some((value) => value !== null)
+    ? nutrition
+    : null;
 }
 
 function fieldClass(hasError: boolean) {
@@ -261,6 +323,49 @@ export default function RecipeForm({
           {renderError("difficulty")}
         </div>
       </div>
+
+      <fieldset className="rounded-xl border border-zinc-200 p-4 dark:border-zinc-800">
+        <legend className="px-1 text-sm font-medium">
+          Thông tin dinh dưỡng (tùy chọn)
+        </legend>
+        <p className="mb-3 text-xs text-muted-foreground">
+          Tính cho một khẩu phần. Bỏ trống nếu không có dữ liệu.
+        </p>
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+          {(
+            [
+              ["nutritionCalories", "recipe-calories", "Calories (kcal)"],
+              ["nutritionProtein", "recipe-protein", "Protein (g)"],
+              [
+                "nutritionCarbohydrates",
+                "recipe-carbohydrates",
+                "Carbohydrates (g)",
+              ],
+              ["nutritionFat", "recipe-fat", "Fat (g)"],
+              ["nutritionFiber", "recipe-fiber", "Fiber (g)"],
+              ["nutritionSodium", "recipe-sodium", "Sodium (mg)"],
+            ] as const
+          ).map(([field, id, label]) => (
+            <div key={field}>
+              <label htmlFor={id} className="mb-1 block text-sm font-medium">
+                {label}
+              </label>
+              <input
+                id={id}
+                type="number"
+                min={0}
+                step="0.01"
+                inputMode="decimal"
+                value={values[field]}
+                disabled={disabled}
+                onChange={(e) => set({ [field]: e.target.value })}
+                className={fieldClass(!!errors[field])}
+              />
+              {renderError(field)}
+            </div>
+          ))}
+        </div>
+      </fieldset>
     </div>
   );
 }

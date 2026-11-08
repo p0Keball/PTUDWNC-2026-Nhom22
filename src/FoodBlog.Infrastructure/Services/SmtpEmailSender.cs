@@ -113,4 +113,52 @@ public sealed class SmtpEmailSender : IEmailSender
 
         _logger.LogInformation("Password reset email sent to {RecipientEmail}.", recipientEmail);
     }
+
+    public async Task SendEmailConfirmationAsync(
+        string recipientEmail,
+        string displayName,
+        string confirmationLink,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(_options.Host) ||
+            string.IsNullOrWhiteSpace(_options.FromAddress))
+        {
+            throw new InvalidOperationException("Email SMTP chưa được cấu hình.");
+        }
+
+        var message = new MimeMessage();
+        message.From.Add(new MailboxAddress(_options.FromName, _options.FromAddress));
+        message.To.Add(MailboxAddress.Parse(recipientEmail));
+        message.Subject = "Xác nhận địa chỉ email - FoodBlog";
+        message.Body = new BodyBuilder
+        {
+            HtmlBody = $"""
+                <p>Xin chào {WebUtility.HtmlEncode(displayName)},</p>
+                <p>Cảm ơn bạn đã đăng ký FoodBlog. Vui lòng xác nhận địa chỉ email để mở khóa đầy đủ quyền tác giả.</p>
+                <p><a href="{WebUtility.HtmlEncode(confirmationLink)}" style="background:#2563eb;color:#fff;padding:10px 20px;text-decoration:none;border-radius:6px;">Xác nhận email</a></p>
+                <p>Nếu bạn không tạo tài khoản này, vui lòng bỏ qua email.</p>
+                <p>Trân trọng,<br/>Đội ngũ FoodBlog</p>
+                """
+        }.ToMessageBody();
+
+        using var smtp = new SmtpClient();
+        var socketOptions = _options.UseSsl
+            ? _options.Port == 465
+                ? SecureSocketOptions.SslOnConnect
+                : SecureSocketOptions.StartTls
+            : SecureSocketOptions.None;
+        await smtp.ConnectAsync(
+            _options.Host,
+            _options.Port,
+            socketOptions,
+            cancellationToken);
+
+        if (!string.IsNullOrWhiteSpace(_options.Username))
+            await smtp.AuthenticateAsync(_options.Username, _options.Password, cancellationToken);
+
+        await smtp.SendAsync(message, cancellationToken);
+        await smtp.DisconnectAsync(true, cancellationToken);
+
+        _logger.LogInformation("Email confirmation sent to {RecipientEmail}.", recipientEmail);
+    }
 }

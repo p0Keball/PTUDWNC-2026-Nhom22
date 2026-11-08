@@ -34,6 +34,7 @@ public sealed class GetMeQueryHandler : IRequestHandler<GetMeQuery, UserProfileD
             user.Bio,
             roles.FirstOrDefault() ?? "Author",
             user.IsActive,
-            user.CreatedAt);
+            user.CreatedAt,
+            user.EmailConfirmed);
     }
 }

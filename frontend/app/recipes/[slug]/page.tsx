@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, permanentRedirect } from "next/navigation";
 import {
   ArrowLeft,
   CalendarDays,
@@ -34,7 +34,8 @@ interface RecipePageProps {
   params: Promise<{ slug: string }>;
 }
 
-export const dynamic = "force-dynamic";
+// SRS 5.1: trang chi tiết công thức dùng ISR (revalidate = 300).
+export const revalidate = 300;
 
 function primaryImage(recipe: RecipeDetail) {
   return recipe.images.find((image) => image.isPrimary) ?? recipe.images[0] ?? null;
@@ -111,6 +112,11 @@ export default async function RecipeDetailPage({ params }: RecipePageProps) {
   }
 
   if (!recipe) notFound();
+
+  // Slug cũ: API trả 301 về slug hiện tại; chuyển hướng trình duyệt/crawler
+  // sang URL mới để tránh nội dung trùng lặp. `slug` đã được Next.js decode.
+  if (recipe.slug && recipe.slug !== slug)
+    permanentRedirect(`/recipes/${encodeURIComponent(recipe.slug)}`);
 
   const image = primaryImage(recipe);
   const totalMinutes = recipe.prepTimeMinutes + recipe.cookTimeMinutes;

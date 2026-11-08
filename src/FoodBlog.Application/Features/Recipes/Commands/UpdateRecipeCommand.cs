@@ -2,6 +2,7 @@ using FluentValidation;
 using FoodBlog.Application.Common.Interfaces;
 using FoodBlog.Application.Contracts.Persistence;
 using FoodBlog.Application.Features.Recipes;
+using FoodBlog.Domain.Common;
 using FoodBlog.Domain.Entities;
 using FoodBlog.Domain.Enums;
 using FoodBlog.Domain.Exceptions;
@@ -77,7 +78,25 @@ public sealed class UpdateRecipeCommandHandler(IUnitOfWork uow, ICurrentUserServ
             throw new FluentValidation.ValidationException(
                 [new FluentValidation.Results.ValidationFailure("CategoryId", "Danh mục không tồn tại.")]);
 
-        recipe.Title = req.Title.Trim();
+        var newTitle = req.Title.Trim();
+        // FR-SEO-002: tiêu đề đổi -> sinh slug mới, giữ slug cũ để redirect 301.
+        if (!string.Equals(recipe.Title, newTitle, StringComparison.Ordinal))
+        {
+            var baseSlug = SlugHelper.Generate(newTitle);
+            if (!string.IsNullOrWhiteSpace(baseSlug) &&
+                !string.Equals(baseSlug, recipe.Slug, StringComparison.Ordinal))
+            {
+                var candidate = baseSlug;
+                var counter = 2;
+                while (await uow.Recipes.SlugExistsAsync(candidate, ct))
+                    candidate = $"{baseSlug}-{counter++}";
+
+                recipe.PreviousSlug = recipe.Slug;
+                recipe.Slug = candidate;
+            }
+        }
+
+        recipe.Title = newTitle;
         recipe.Description = req.Description;
         recipe.Instructions = req.Instructions;
         recipe.CategoryId = req.CategoryId;

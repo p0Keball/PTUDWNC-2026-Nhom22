@@ -6,6 +6,15 @@ Mọi thay đổi đáng chú ý của dự án được ghi tại đây.
 ## [Unreleased]
 
 ### Added
+- Form tạo/sửa công thức có mục **Thông tin dinh dưỡng** (calories, protein,
+  carbohydrates, fat, fiber, sodium) — hoàn thiện FR-RCP-003/004.
+- Bộ lọc `minServings` trên `/recipes` và `/search` — hoàn thiện FR-SRCH-002.
+- `GET /auth/me` trả thêm `emailConfirmed` (FR-AUTH-006).
+- Endpoint `POST /auth/confirm-email` và `POST /auth/resend-confirmation`;
+  `EmailConfirmationJob` gửi liên kết xác nhận (SRS 2.3).
+- Policy `VerifiedAuthor` gắn vào các endpoint ghi công thức/ảnh/bước/nguyên liệu;
+  bật kiểm tra bằng `Auth:RequireConfirmedEmail` (mặc định tắt ở dev/demo).
+- Trang `/auth/confirm-email` và nút gửi lại xác nhận trong `/profile`.
 - Trang `/categories` (ISR 3600) và `/categories/[slug]` (ISR 600) dùng
   `GET /categories/{slug}`; sidebar danh mục trỏ về URL semantic.
 - Trang `/search` (SSR, full-text search + phân trang) và `/dashboard/categories`
@@ -27,6 +36,12 @@ Mọi thay đổi đáng chú ý của dự án được ghi tại đây.
   `foodblog.recipes.created`, `foodblog.recipes.published`.
 - `WelcomeEmailJob` retry 3 lần với backoff 1m/5m/30m (NFR-REL-002).
 - `frontend/app/sitemap.ts` và `frontend/app/robots.ts` (NFR-SEO-003).
+
+### Changed
+- `/` và `/recipes/[slug]` chuyển sang ISR đúng SRS 5.1 (`revalidate` 3600 và
+  300 giây) thay vì `force-dynamic`.
+- `DELETE /api/v1/recipes/{id}` xóa vĩnh viễn (cascade Steps/Ingredients/Images)
+  đúng FR-RCP-007; ảnh MinIO vẫn được dọn bất đồng bộ qua Hangfire.
 - Dockerfile multi-stage cho API và frontend (standalone), Nginx reverse proxy,
   Docker Compose đầy đủ `api`/`frontend`/`nginx`/`postgres`/`redis`/`minio`/`seq`.
 - `.editorconfig`, `ARCHITECTURE.md`, `CHANGELOG.md`, `docs/on-tap-cuoi-ky.md`.

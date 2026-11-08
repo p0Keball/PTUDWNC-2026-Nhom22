@@ -78,6 +78,7 @@ public sealed class UpdateMeCommandHandler : IRequestHandler<UpdateMeCommand, Us
             user.Bio,
             roles.FirstOrDefault() ?? "Author",
             user.IsActive,
-            user.CreatedAt);
+            user.CreatedAt,
+            user.EmailConfirmed);
     }
 }
