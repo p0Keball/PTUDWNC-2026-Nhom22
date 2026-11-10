@@ -20,10 +20,10 @@ export default async function CategoriesPage() {
     <Container className="py-10">
       <PageHeader
         title="Danh mục công thức"
-        description={`Khám phá ${categories.length} danh mục ẩm thực trên FoodBlog.`}
+        description={`Khám phá ${categories?.length || 0} danh mục ẩm thực trên FoodBlog.`}
       />
 
-      {categories.length === 0 ? (
+      {!categories || categories.length === 0 ? (
         <EmptyState
           title="Chưa có danh mục nào"
           description="Hiện hệ thống chưa có danh mục công thức."
@@ -35,37 +35,43 @@ export default async function CategoriesPage() {
         />
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {categories.map((category) => (
-            <Link
-              key={category.id}
-              href={`/categories/${encodeURIComponent(category.slug)}`}
-              className="group block"
-            >
-              <div className="overflow-hidden rounded-xl border bg-card p-6 shadow-sm transition hover:shadow-md">
-                <div className="flex items-center justify-between mb-2">
-                  <h3 className="text-lg font-semibold group-hover:text-primary">
-                    {category.name}
-                  </h3>
-                  <span className="text-xs font-medium rounded-full bg-muted px-2 py-1">
-                    {category.recipeCount} công thức
-                  </span>
+          {categories.map((category, index) => {
+            // ✅ Tạo đường dẫn an toàn, chống bị undefined/null gây crash Link
+            const safeSlug = category.slug || category.id || "";
+            const categoryHref = safeSlug
+              ? `/categories/${encodeURIComponent(safeSlug)}`
+              : "/categories";
+
+            return (
+              <Link
+                key={category.id || category.slug || index}
+                href={categoryHref}
+                className="group block"
+              >
+                <div className="overflow-hidden rounded-xl border bg-card p-6 shadow-sm transition hover:shadow-md">
+                  <div className="mb-2 flex items-center justify-between">
+                    <h3 className="text-lg font-semibold group-hover:text-primary">
+                      {category.name || "Danh mục"}
+                    </h3>
+                    <span className="rounded-full bg-muted px-2 py-1 text-xs font-medium">
+                      {category.recipeCount ?? 0} công thức
+                    </span>
+                  </div>
+                  {category.description && (
+                    <p className="mb-4 line-clamp-2 text-sm text-muted-foreground">
+                      {category.description}
+                    </p>
+                  )}
+                  <div className="flex items-center justify-between border-t pt-4">
+                    {/* ✅ Đổi từ <Link> sang <span> để tránh lỗi lồng thẻ <Link> gây crash */}
+                    <span className="text-sm font-medium text-primary group-hover:underline">
+                      Xem công thức &rarr;
+                    </span>
+                  </div>
                 </div>
-                {category.description && (
-                  <p className="text-sm text-muted-foreground line-clamp-2 mb-4">
-                    {category.description}
-                  </p>
-                )}
-                <div className="flex items-center justify-between pt-4 border-t">
-                  <Link
-                    href={`/categories/${encodeURIComponent(category.slug)}`}
-                    className="text-sm font-medium text-primary hover:underline"
-                  >
-                    Xem công thức
-                  </Link>
-                </div>
-              </div>
-            </Link>
-          ))}
+              </Link>
+            );
+          })}
         </div>
       )}
     </Container>
