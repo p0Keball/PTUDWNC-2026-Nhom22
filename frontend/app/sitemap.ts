@@ -1,6 +1,8 @@
 import type { MetadataRoute } from "next";
 import { API_BASE_URL, getApiBaseUrl } from "@/lib/http";
 
+export const dynamic = "force-dynamic";
+
 /**
  * NFR-SEO-003: sitemap.xml động cho toàn bộ trang tĩnh + Published recipes
  * + danh mục. Next.js cache route này; dữ liệu được fetch từ Backend API.

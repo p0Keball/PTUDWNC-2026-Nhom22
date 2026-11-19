@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { ChefHat, LogOut, PenLine, UserRound } from "lucide-react";
+import { ChefHat, LogIn, LogOut, PenLine, UserRound } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -64,23 +64,54 @@ export default function SiteHeader() {
               {link.label}
             </Link>
           ))}
+          {hasHydrated && status === "authenticated" && (
+            <Link
+              href="/profile"
+              className={cn(
+                "rounded-full px-3 py-1.5 whitespace-nowrap transition-colors hover:bg-accent hover:text-accent-foreground",
+                isActive("/profile") &&
+                  "bg-secondary font-medium text-secondary-foreground"
+              )}
+            >
+              Hồ sơ
+            </Link>
+          )}
         </nav>
 
         <div className="flex items-center gap-2">
           {hasHydrated && status === "authenticated" && user ? (
             <>
-              <span className="hidden items-center gap-1.5 text-sm text-muted-foreground sm:inline-flex">
-                <UserRound className="size-4" />
-                {user.fullName}
-              </span>
+              <Button
+                asChild
+                variant={isActive("/profile") ? "secondary" : "ghost"}
+                size="sm"
+              >
+                <Link
+                  href="/profile"
+                  className="flex items-center gap-1.5"
+                  title="Xem và chỉnh sửa hồ sơ cá nhân"
+                >
+                  <UserRound className="size-4" />
+                  <span className="max-w-[130px] truncate sm:max-w-none">
+                    {user.fullName || "Hồ sơ"}
+                  </span>
+                </Link>
+              </Button>
               <Button variant="ghost" size="sm" onClick={handleLogout}>
-                <LogOut />
+                <LogOut className="size-4" />
                 <span className="hidden sm:inline">Đăng xuất</span>
               </Button>
             </>
           ) : (
-            <Button asChild variant="ghost" size="sm">
-              <Link href="/auth/login">Đăng nhập</Link>
+            <Button
+              asChild
+              variant={isActive("/auth/login") ? "secondary" : "ghost"}
+              size="sm"
+            >
+              <Link href="/auth/login" className="flex items-center gap-1.5">
+                <LogIn className="size-4" />
+                <span>Đăng nhập</span>
+              </Link>
             </Button>
           )}
 

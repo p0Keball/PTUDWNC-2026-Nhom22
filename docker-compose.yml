@@ -18,7 +18,7 @@ services:
       retries: 10
 
   minio:
-    image: quay.io/minio/aistor/minio:latest
+    image: quay.io/minio/minio:latest
     container_name: foodblog-minio
     restart: unless-stopped
     command: server /data --console-address ":9001"
@@ -79,6 +79,9 @@ services:
       ConnectionStrings__Default: Host=postgres;Port=5432;Database=foodblog;Username=foodblog;Password=foodblog123
       Redis__Connection: redis:6379
       MinIO__Endpoint: minio:9000
+      MinIO__AccessKey: minioadmin
+      MinIO__SecretKey: minioadmin123
+      MinIO__Bucket: culinary-blog
       MinIO__PublicUrl: http://localhost:9000
       Cors__Origins__0: http://localhost
       Cors__Origins__1: https://localhost

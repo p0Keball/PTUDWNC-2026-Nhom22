@@ -6,7 +6,7 @@ import { EmptyState } from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
 import { getCategories, type Category } from "@/lib/api";
 
-export const revalidate = 3600;
+export const dynamic = "force-dynamic";
 
 export const metadata = {
   title: "Danh mục công thức",
@@ -14,7 +14,7 @@ export const metadata = {
 };
 
 export default async function CategoriesPage() {
-  const categories = await getCategories().catch(() => [] as Category[]);
+  const categories = await getCategories({ noStore: true }).catch(() => [] as Category[]);
 
   return (
     <Container className="py-10">

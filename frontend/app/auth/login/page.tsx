@@ -52,6 +52,22 @@ export default function LoginPage() {
     }
   }
 
+  async function handleDemoLogin(demoEmail: string, demoPass: string) {
+    setEmail(demoEmail);
+    setPassword(demoPass);
+    setSubmitting(true);
+    setError(null);
+    try {
+      await login(demoEmail, demoPass);
+      toast.success("Đăng nhập thành công với vai trò Demo.");
+      router.replace("/dashboard");
+    } catch (err) {
+      setError(getErrorMessage(err, "Đăng nhập thất bại."));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   return (
     <Container className="max-w-md justify-center py-10">
       <Card>
@@ -104,6 +120,40 @@ export default function LoginPage() {
               <LogIn />
               {submitting ? "Đang đăng nhập…" : "Đăng nhập"}
             </Button>
+
+            <div className="relative my-2">
+              <div className="absolute inset-0 flex items-center">
+                <span className="w-full border-t" />
+              </div>
+              <div className="relative flex justify-center text-xs uppercase">
+                <span className="bg-card px-2 text-muted-foreground font-semibold">
+                  Tiện ích DEMO 1-CLICK đa vai trò
+                </span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="w-full text-xs font-medium border-primary/40 hover:bg-primary/10"
+                disabled={submitting}
+                onClick={() => handleDemoLogin("admin@foodblog.local", "Foodblog123!")}
+              >
+                👑 Admin (Quản trị)
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="w-full text-xs font-medium border-primary/40 hover:bg-primary/10"
+                disabled={submitting}
+                onClick={() => handleDemoLogin("Domenic.Littel56@foodblog.local", "Foodblog123!")}
+              >
+                ✍️ Author (Tác giả)
+              </Button>
+            </div>
 
             <p className="text-center text-sm text-muted-foreground">
               Chưa có tài khoản?{" "}

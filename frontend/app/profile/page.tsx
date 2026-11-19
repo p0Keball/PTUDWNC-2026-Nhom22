@@ -31,7 +31,7 @@ export default function ProfilePage() {
   useEffect(() => {
     if (!hasHydrated) return;
     if (!accessToken) {
-      router.replace("/login");
+      router.replace("/auth/login");
       return;
     }
     getMyProfile(accessToken)
@@ -44,7 +44,7 @@ export default function ProfilePage() {
       .catch((err) => {
         if (err instanceof ApiError && err.status === 401) {
           useAuthStore.getState().clearSession();
-          router.replace("/login");
+          router.replace("/auth/login");
         } else setError("Không tải được hồ sơ.");
       })
       .finally(() => setLoading(false));
@@ -52,7 +52,7 @@ export default function ProfilePage() {
 
   const save = async (event: FormEvent) => {
     event.preventDefault();
-    if (!accessToken) return router.replace("/login");
+    if (!accessToken) return router.replace("/auth/login");
     setSaving(true);
     setError(null);
     setMessage(null);
