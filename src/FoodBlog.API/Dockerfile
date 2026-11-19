@@ -13,7 +13,7 @@ RUN dotnet restore src/FoodBlog.API/FoodBlog.API.csproj
 
 COPY src/ ./src/
 RUN dotnet publish src/FoodBlog.API/FoodBlog.API.csproj \
-    -c Release -o /app/publish --no-restore /p:UseAppHost=false
+    -c Debug -o /app/publish --no-restore /p:UseAppHost=false
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app

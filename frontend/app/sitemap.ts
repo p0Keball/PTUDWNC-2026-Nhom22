@@ -1,5 +1,5 @@
 import type { MetadataRoute } from "next";
-import { API_BASE_URL } from "@/lib/http";
+import { API_BASE_URL, getApiBaseUrl } from "@/lib/http";
 
 /**
  * NFR-SEO-003: sitemap.xml động cho toàn bộ trang tĩnh + Published recipes
@@ -27,7 +27,7 @@ interface PagedResponse<T> {
 
 async function fetchJson<T>(path: string): Promise<T | null> {
   try {
-    const response = await fetch(`${API_BASE_URL}${path}`, {
+    const response = await fetch(`${getApiBaseUrl()}${path}`, {
       next: { revalidate: 3600, tags: ["recipes"] },
     });
     if (!response.ok) return null;

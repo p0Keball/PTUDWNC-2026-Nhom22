@@ -80,8 +80,14 @@ services:
       Redis__Connection: redis:6379
       MinIO__Endpoint: minio:9000
       MinIO__PublicUrl: http://localhost:9000
-      Cors__Origins__0: http://localhost:8080
+      Cors__Origins__0: http://localhost
       Cors__Origins__1: https://localhost
+      Cors__Origins__2: http://localhost:3000
+      Cors__Origins__3: https://localhost:3000
+      Cors__Origins__4: http://localhost:8080
+      Cors__Origins__5: http://127.0.0.1
+      Cors__Origins__6: http://127.0.0.1:3000
+      Cors__Origins__7: http://127.0.0.1:8080
       Jwt__Secret: ${JWT_SECRET:-dev-only-foodblog-jwt-secret-change-me-2026}
       Serilog__WriteTo__2__Args__serverUrl: http://seq:5341
       OpenTelemetry__OtlpEndpoint: http://seq:5341/ingest/otlp
@@ -105,6 +111,7 @@ services:
       - api
     environment:
       NODE_ENV: production
+      INTERNAL_API_URL: http://api:8080
     expose:
       - "3000"
 

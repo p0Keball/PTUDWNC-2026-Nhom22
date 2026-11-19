@@ -126,6 +126,19 @@ builder.Services.AddCors(options =>
         // Frontend gửi credentials: "include" (cookie auth của Identity),
         // nên bắt buộc phải AllowCredentials với origin cụ thể.
         policy.WithOrigins(origins)
+            .SetIsOriginAllowed(origin =>
+            {
+                if (string.IsNullOrWhiteSpace(origin)) return false;
+                try
+                {
+                    var uri = new Uri(origin);
+                    return uri.Host is "localhost" or "127.0.0.1" || origins.Contains(origin, StringComparer.OrdinalIgnoreCase);
+                }
+                catch
+                {
+                    return false;
+                }
+            })
             .AllowAnyHeader()
             .AllowAnyMethod()
             .AllowCredentials()

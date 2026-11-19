@@ -1,11 +1,26 @@
 import type { ProblemDetails } from "@/types/problem";
 
 /**
- * Base URL của Backend API (.NET 10 Minimal APIs).
- * Dev: http://localhost:5298 — Prod: https://api.culinaryblog.com
+ * Lấy Base URL của Backend API:
+ * - Khi chạy SSR trên Node.js (trong Docker container): ưu tiên INTERNAL_API_URL (ví dụ http://api:8080).
+ * - Khi chạy ở Client-side (trình duyệt): dùng NEXT_PUBLIC_API_URL (ví dụ http://localhost:8080).
  */
+export function getApiBaseUrl(): string {
+  if (typeof window === "undefined") {
+    if (process.env.INTERNAL_API_URL) {
+      return process.env.INTERNAL_API_URL.replace(/\/$/, "");
+    }
+    const publicUrl = process.env.NEXT_PUBLIC_API_URL ?? "";
+    if (publicUrl.includes("localhost:8080") && process.env.HOSTNAME === "0.0.0.0") {
+      return "http://api:8080";
+    }
+    return (publicUrl || "http://localhost:8080").replace(/\/$/, "");
+  }
+  return (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080").replace(/\/$/, "");
+}
+
 export const API_BASE_URL = (
-  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5298"
+  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080"
 ).replace(/\/$/, "");
 
 export class ApiError extends Error {
@@ -108,7 +123,8 @@ export async function request<T>(
   }
   if (token) finalHeaders.set("Authorization", `Bearer ${token}`);
 
-  const url = /^https?:\/\//i.test(path) ? path : `${API_BASE_URL}${path}`;
+  const baseUrl = getApiBaseUrl();
+  const url = /^https?:\/\//i.test(path) ? path : `${baseUrl}${path}`;
 
   const response = await fetch(url, {
     ...init,
