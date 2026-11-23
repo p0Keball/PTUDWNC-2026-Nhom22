@@ -1,0 +1,5 @@
+# Shell script / cron phải giữ LF, nếu không container Linux sẽ báo "not found"
+# (shebang #!/bin/sh\r) hoặc crond bỏ qua dòng lệnh.
+*.sh text eol=lf
+db-backup/crontab text eol=lf
+nginx/*.conf text eol=lf
